@@ -14,9 +14,7 @@ import { StatusBar } from "expo-status-bar";
 import type { Listing } from "@listing-validator/types";
 import { createApiClient } from "@listing-validator/api-client";
 
-const api = createApiClient(
-  process.env.EXPO_PUBLIC_API_URL ?? "http://127.0.0.1:43124"
-);
+const defaultApiUrl = process.env.EXPO_PUBLIC_API_URL ?? "http://127.0.0.1:43124";
 
 type Picked = { uri: string; name: string; type: string };
 
@@ -26,22 +24,34 @@ export default function App() {
   const [price, setPrice] = useState("");
   const [vin, setVin] = useState("");
   const [photos, setPhotos] = useState<Picked[]>([]);
+  const [apiBase, setApiBase] = useState(defaultApiUrl);
   const [listing, setListing] = useState<Listing | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  const api = useMemo(() => createApiClient(apiBase.trim() || defaultApiUrl), [apiBase]);
+  const listingId = listing?.id;
+  const listingStatus = listing?.status;
+
   useEffect(() => {
-    if (!listing || listing.status === "completed" || listing.status === "failed") return;
-    const id = listing.id;
-    const timer = setInterval(async () => {
+    if (!listingId || listingStatus === "completed" || listingStatus === "failed") return;
+    const id = listingId;
+    let cancelled = false;
+    async function tick() {
       try {
-        setListing(await api.getListing(id));
+        const next = await api.getListing(id);
+        if (!cancelled) setListing(next);
       } catch {
         /* ignore */
       }
-    }, 1500);
-    return () => clearInterval(timer);
-  }, [listing]);
+    }
+    void tick();
+    const timer = setInterval(() => void tick(), 1500);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [api, listingId, listingStatus]);
 
   const scoreColor = useMemo(() => {
     const score = listing?.report?.riskScore;
@@ -94,14 +104,7 @@ export default function App() {
           type: photo.type,
         } as unknown as Blob);
       }
-      const res = await fetch(
-        `${(process.env.EXPO_PUBLIC_API_URL ?? "http://127.0.0.1:43124").replace(/\/$/, "")}/listings/${created.id}/images`,
-        { method: "POST", body: form }
-      );
-      if (!res.ok) {
-        throw new Error(await res.text());
-      }
-      setListing((await res.json()) as Listing);
+      setListing(await api.uploadForm(created.id, form));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Submit failed");
     } finally {
@@ -118,6 +121,17 @@ export default function App() {
         <Text style={styles.sub}>
           User-assisted uploads only. Risk signals — not title verification.
         </Text>
+
+        <Text style={styles.label}>API server</Text>
+        <TextInput
+          style={styles.input}
+          autoCapitalize="none"
+          autoCorrect={false}
+          value={apiBase}
+          onChangeText={setApiBase}
+          placeholderTextColor="#6f8578"
+          placeholder="http://192.168.1.20:43124"
+        />
 
         <Text style={styles.label}>Title</Text>
         <TextInput style={styles.input} value={title} onChangeText={setTitle} placeholderTextColor="#6f8578" placeholder="2018 Honda Civic LX" />
@@ -165,6 +179,16 @@ export default function App() {
                 <Text style={[styles.score, { color: scoreColor }]}>{listing.report.riskScore}</Text>
                 <Text style={styles.sub}>{listing.report.summary}</Text>
                 <Text style={styles.badge}>History not checked · Title not verified</Text>
+                {listing.report.imageFindings?.map((line) => (
+                  <Text key={line} style={styles.sub}>
+                    {line}
+                  </Text>
+                ))}
+                {listing.report.claimChecks.map((check) => (
+                  <Text key={check.claim} style={styles.flag}>
+                    [{check.verdict}] {check.claim}: {check.detail}
+                  </Text>
+                ))}
                 {listing.report.flags.map((flag) => (
                   <Text key={flag.code} style={styles.flag}>
                     [{flag.severity}] {flag.message}

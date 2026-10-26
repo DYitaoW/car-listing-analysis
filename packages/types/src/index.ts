@@ -38,6 +38,7 @@ export interface AnalysisReport {
     parkIt: boolean;
     parkOutside: boolean;
   };
+  imageFindings: string[];
   historyChecked: false;
   titleVerified: false;
   disclaimer: string;

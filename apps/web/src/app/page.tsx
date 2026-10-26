@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { Listing } from "@listing-validator/types";
-import { api } from "@/lib/api";
+import { api, apiBaseUrl } from "@/lib/api";
 
 export default function HomePage() {
   const [title, setTitle] = useState("");
@@ -15,27 +15,45 @@ export default function HomePage() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [storageMode, setStorageMode] = useState<string>("…");
+  const [visionMode, setVisionMode] = useState<string>("…");
+  const [apiError, setApiError] = useState<string | null>(null);
 
   useEffect(() => {
     api
       .health()
-      .then((h) => setStorageMode(h.storage))
-      .catch(() => setStorageMode("unreachable"));
+      .then((h) => {
+        setStorageMode(h.storage);
+        setVisionMode(h.llmProvider);
+        setApiError(null);
+      })
+      .catch((err: unknown) => {
+        setStorageMode("unreachable");
+        setVisionMode("unknown");
+        setApiError(err instanceof Error ? err.message : "Cannot reach the analysis API.");
+      });
   }, []);
 
+  const listingId = listing?.id;
+  const listingStatus = listing?.status;
   useEffect(() => {
-    if (!listing || listing.status === "completed" || listing.status === "failed") return;
-    const id = listing.id;
-    const timer = setInterval(async () => {
+    if (!listingId || listingStatus === "completed" || listingStatus === "failed") return;
+    const id = listingId;
+    let cancelled = false;
+    async function tick() {
       try {
         const next = await api.getListing(id);
-        setListing(next);
+        if (!cancelled) setListing(next);
       } catch {
         /* ignore transient poll errors */
       }
-    }, 1500);
-    return () => clearInterval(timer);
-  }, [listing]);
+    }
+    void tick();
+    const timer = setInterval(() => void tick(), 1500);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [listingId, listingStatus]);
 
   const fileCount = files?.length ?? 0;
 
@@ -85,9 +103,10 @@ export default function HomePage() {
             mismatches, VIN specs, and open recalls. Not a Carfax. Not a certified inspection.
           </p>
           <p className="font-mono text-xs text-muted">
-            Storage: <span className="text-accent">{storageMode}</span> · API{" "}
-            {process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:43124"}
+            Storage: <span className="text-accent">{storageMode}</span> · Vision:{" "}
+            <span className="text-accent">{visionMode}</span> · Requests: {apiBaseUrl}
           </p>
+          {apiError ? <p className="max-w-xl text-sm text-danger">{apiError}</p> : null}
         </header>
 
         <div className="grid gap-8 lg:grid-cols-2">
@@ -195,6 +214,9 @@ export default function HomePage() {
                 {listing.report ? (
                   <>
                     <p className="text-sm text-muted">{listing.report.summary}</p>
+                    <p className="font-mono text-xs text-muted">
+                      Confidence {Math.round(listing.report.confidence * 100)}%
+                    </p>
                     <div className="flex flex-wrap gap-2">
                       <Badge>History not checked</Badge>
                       <Badge>Title not verified</Badge>
@@ -205,6 +227,48 @@ export default function HomePage() {
                         </Badge>
                       ) : null}
                     </div>
+                    {listing.report.vinMatch.checked ? (
+                      <p className="text-sm text-foreground">
+                        VIN{" "}
+                        {listing.report.vinMatch.matchesListing
+                          ? "agrees with the listing text"
+                          : listing.report.vinMatch.matchesListing === false
+                            ? "conflicts with the listing text"
+                            : "was decoded"}
+                        {listing.report.vinMatch.decoded
+                          ? ` · ${[
+                              listing.report.vinMatch.decoded.modelYear,
+                              listing.report.vinMatch.decoded.make,
+                              listing.report.vinMatch.decoded.model,
+                            ]
+                              .filter(Boolean)
+                              .join(" ")}`
+                          : ""}
+                      </p>
+                    ) : null}
+                    {listing.report.imageFindings?.length ? (
+                      <ul className="space-y-1">
+                        {listing.report.imageFindings.map((line) => (
+                          <li key={line} className="text-sm text-muted">
+                            {line}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                    {listing.report.claimChecks.length ? (
+                      <ul className="space-y-2">
+                        {listing.report.claimChecks.map((check) => (
+                          <li
+                            key={check.claim}
+                            className="rounded-lg border border-panel-border px-3 py-2 text-sm"
+                          >
+                            <span className="font-mono text-xs uppercase text-accent">{check.verdict}</span>
+                            <p className="text-foreground">{check.claim}</p>
+                            <p className="text-muted">{check.detail}</p>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
                     {listing.report.flags.length ? (
                       <ul className="space-y-2">
                         {listing.report.flags.map((flag) => (

@@ -58,6 +58,7 @@ class AnalysisReport(CamelModel):
     claim_checks: list[ClaimCheck]
     vin_match: VinMatch
     recalls: RecallsInfo
+    image_findings: list[str] = Field(default_factory=list)
     history_checked: Literal[False] = False
     title_verified: Literal[False] = False
     disclaimer: str = (
