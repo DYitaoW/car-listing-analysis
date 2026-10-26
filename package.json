@@ -5,7 +5,9 @@
     "dev": "pnpm run --parallel dev:web dev:api",
     "dev:web": "pnpm --filter web exec next dev --port 43123 --hostname 127.0.0.1",
     "dev:mobile": "pnpm --filter mobile start",
-    "dev:api": "cd apps/api && uv run uvicorn listing_validator_api.main:app --reload --host 0.0.0.0 --port 43124",
+    "dev:api": "node scripts/run-api.mjs",
+    "setup:api": "node scripts/run-api.mjs setup",
+    "setup:web": "pnpm install",
     "build:web": "pnpm --filter web build",
     "lint:web": "pnpm --filter web lint"
   },

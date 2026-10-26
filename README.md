@@ -39,6 +39,12 @@ docker-compose.yml   Postgres + Redis (optional)
 
 ## Quick start
 
+### Prerequisites
+
+- **Node.js 20+** and **pnpm** (`npm install -g pnpm`)
+- **Python 3.12+** for the API ([python.org](https://www.python.org/downloads/))
+- **`uv` is optional.** If it is missing, the repo falls back to `apps/api/requirements.txt` via pip.
+
 ### 1. Environment
 
 ```bash
@@ -47,13 +53,36 @@ cp .env.example .env
 # Create a public or authenticated bucket named listing-images in Supabase
 ```
 
-### 2. API and web
+On Windows Command Prompt:
+
+```bat
+copy .env.example .env
+```
+
+### 2. Install + run (recommended)
 
 ```bash
 pnpm install
-cd apps/api && uv sync && cd ../..
+pnpm setup:api
 pnpm dev
 ```
+
+Windows Command Prompt:
+
+```bat
+scripts\setup-web.cmd
+scripts\setup-api.cmd
+pnpm dev
+```
+
+If `uv` / Node helpers are unavailable, install and run the API with pip only:
+
+```bat
+scripts\setup-api-pip.cmd
+scripts\run-api-pip.cmd
+```
+
+`pnpm setup:api` / `scripts\setup-api.cmd` use `uv sync` when `uv` is installed; otherwise they create `apps/api/.venv` and install from `apps/api/requirements.txt`.
 
 That starts the API on port 43124 and the web app on port 43123. The browser talks to `/api/lv` on the web origin, and the Next server proxies that to the API. Calling `127.0.0.1:43124` from the page fails with Firefox's `NetworkError when attempting to fetch resource` whenever the page is not served from that same machine.
 
@@ -61,9 +90,23 @@ Health: [http://127.0.0.1:43124/health](http://127.0.0.1:43124/health)
 
 Open [http://127.0.0.1:43123](http://127.0.0.1:43123).
 
+Web only:
+
+```bash
+pnpm dev:web
+```
+
 `LLM_PROVIDER=stub` still inspects uploaded photos and, when a VIN is present, calls NHTSA. Set `LLM_PROVIDER=gemini` (with `GEMINI_API_KEY`) or `LLM_PROVIDER=ollama` to compare photos with the description.
 
-### 4. Mobile
+### API dependency files
+
+| File | Use |
+| --- | --- |
+| `apps/api/requirements.txt` | `pip install -r requirements.txt` (no uv) |
+| `apps/api/requirements-dev.txt` | Tests (`pytest`) |
+| `apps/api/pyproject.toml` + `uv.lock` | `uv sync` when you have uv |
+
+### 3. Mobile
 
 ```bash
 pnpm --filter mobile add expo-image-picker   # if needed
