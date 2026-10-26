@@ -15,7 +15,7 @@ This is **not** a Carfax substitute and does **not** verify titles. Reports alwa
 | Object storage | **Supabase Storage** (preferred) or local disk stub |
 | Jobs | In-process asyncio (default) or Redis + ARQ |
 | VIN / recalls | NHTSA vPIC + NHTSA Recalls (free) |
-| Vision LLM | `stub` (default) · Gemini · Ollama (pluggable) |
+| Vision LLM | Local photo inspection always · `stub` (default) · Gemini · Ollama |
 
 ### Why Supabase (not Firebase) for storage
 
@@ -47,24 +47,21 @@ cp .env.example .env
 # Create a public or authenticated bucket named listing-images in Supabase
 ```
 
-### 2. API
-
-```bash
-cd apps/api
-uv sync
-uv run uvicorn listing_validator_api.main:app --reload --host 127.0.0.1 --port 43124
-```
-
-Health: [http://127.0.0.1:43124/health](http://127.0.0.1:43124/health)
-
-### 3. Web
+### 2. API and web
 
 ```bash
 pnpm install
-pnpm dev:web
+cd apps/api && uv sync && cd ../..
+pnpm dev
 ```
 
+That starts the API on port 43124 and the web app on port 43123. The browser talks to `/api/lv` on the web origin, and the Next server proxies that to the API. Calling `127.0.0.1:43124` from the page fails with Firefox's `NetworkError when attempting to fetch resource` whenever the page is not served from that same machine.
+
+Health: [http://127.0.0.1:43124/health](http://127.0.0.1:43124/health)
+
 Open [http://127.0.0.1:43123](http://127.0.0.1:43123).
+
+`LLM_PROVIDER=stub` still inspects uploaded photos and, when a VIN is present, calls NHTSA. Set `LLM_PROVIDER=gemini` (with `GEMINI_API_KEY`) or `LLM_PROVIDER=ollama` to compare photos with the description.
 
 ### 4. Mobile
 
@@ -73,7 +70,7 @@ pnpm --filter mobile add expo-image-picker   # if needed
 pnpm dev:mobile
 ```
 
-Point `EXPO_PUBLIC_API_URL` at your machine LAN IP when using a physical device.
+Point `EXPO_PUBLIC_API_URL`, or the API server field in the app, at your machine's LAN IP when using a physical device. `127.0.0.1` on a phone is the phone itself. Android emulator: `http://10.0.2.2:43124`.
 
 ## API surface (MVP)
 

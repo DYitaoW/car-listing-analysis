@@ -7,6 +7,7 @@ from listing_validator_api.schemas import RecallsInfo, VinDecoded
 
 VPIC_URL = "https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVinValues/{vin}?format=json"
 RECALLS_URL = "https://api.nhtsa.gov/recalls/recallsByVehicle"
+_HEADERS = {"User-Agent": "SignalCheck/0.1 (vehicle listing risk signals)", "Accept": "application/json"}
 
 
 async def decode_vin(vin: str) -> VinDecoded | None:
@@ -14,7 +15,7 @@ async def decode_vin(vin: str) -> VinDecoded | None:
     if len(vin) < 11:
         return None
     async with httpx.AsyncClient(timeout=20.0) as client:
-        resp = await client.get(VPIC_URL.format(vin=vin))
+        resp = await client.get(VPIC_URL.format(vin=vin), headers=_HEADERS)
         resp.raise_for_status()
         results = resp.json().get("Results") or []
         if not results:
@@ -31,7 +32,7 @@ async def decode_vin(vin: str) -> VinDecoded | None:
 async def fetch_recalls(make: str, model: str, model_year: str) -> RecallsInfo:
     params = {"make": make, "model": model, "modelYear": model_year}
     async with httpx.AsyncClient(timeout=20.0) as client:
-        resp = await client.get(RECALLS_URL, params=params)
+        resp = await client.get(RECALLS_URL, params=params, headers=_HEADERS)
         resp.raise_for_status()
         payload = resp.json()
         results = payload.get("results") or payload.get("Results") or []

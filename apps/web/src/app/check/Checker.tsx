@@ -1,0 +1,292 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import type { Listing } from "@listing-validator/types";
+import { api, apiBaseUrl } from "@/lib/api";
+
+export function Checker() {
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [price, setPrice] = useState("");
+  const [vin, setVin] = useState("");
+  const [sourceUrl, setSourceUrl] = useState("");
+  const [files, setFiles] = useState<FileList | null>(null);
+  const [listing, setListing] = useState<Listing | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [storageMode, setStorageMode] = useState<string>("…");
+  const [visionMode, setVisionMode] = useState<string>("…");
+  const [apiError, setApiError] = useState<string | null>(null);
+
+  useEffect(() => {
+    api
+      .health()
+      .then((h) => {
+        setStorageMode(h.storage);
+        setVisionMode(h.llmProvider);
+        setApiError(null);
+      })
+      .catch((err: unknown) => {
+        setStorageMode("unreachable");
+        setVisionMode("unknown");
+        setApiError(err instanceof Error ? err.message : "Cannot reach the analysis API.");
+      });
+  }, []);
+
+  const listingId = listing?.id;
+  const listingStatus = listing?.status;
+  useEffect(() => {
+    if (!listingId || listingStatus === "completed" || listingStatus === "failed") return;
+    const id = listingId;
+    let cancelled = false;
+    async function tick() {
+      try {
+        const next = await api.getListing(id);
+        if (!cancelled) setListing(next);
+      } catch {
+        /* ignore transient poll errors */
+      }
+    }
+    void tick();
+    const timer = setInterval(() => void tick(), 1500);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [listingId, listingStatus]);
+
+  const fileCount = files?.length ?? 0;
+
+  const scoreColor = useMemo(() => {
+    const score = listing?.report?.riskScore;
+    if (score == null) return "text-muted";
+    if (score >= 60) return "text-danger";
+    if (score >= 35) return "text-warn";
+    return "text-accent";
+  }, [listing]);
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setSubmitting(true);
+    setListing(null);
+    try {
+      if (!files || files.length === 0) {
+        throw new Error("Add at least one listing photo.");
+      }
+      const created = await api.createListing({
+        title,
+        description,
+        price: price ? Number(price) : null,
+        vin: vin || null,
+        sourceUrl: sourceUrl || null,
+      });
+      const uploaded = await api.uploadImages(created.id, Array.from(files));
+      setListing(uploaded);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Submit failed");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="grid gap-8 lg:grid-cols-2 lg:gap-10">
+      <form
+        onSubmit={onSubmit}
+        className="space-y-4 border border-panel-border bg-panel p-6 md:p-7"
+      >
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--line)] pb-4">
+          <p className="text-sm font-semibold text-ink">Listing details</p>
+          <p className="font-mono text-[11px] tracking-wide text-muted uppercase">
+            {storageMode} · {visionMode} · {apiBaseUrl}
+          </p>
+        </div>
+        {apiError ? <p className="text-sm text-danger">{apiError}</p> : null}
+
+        <Field label="Listing title">
+          <input
+            required
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            className="input-field"
+            placeholder="2018 Honda Civic LX — one owner"
+          />
+        </Field>
+        <Field label="Asking price (USD)">
+          <input
+            type="number"
+            min={0}
+            step="1"
+            value={price}
+            onChange={(e) => setPrice(e.target.value)}
+            className="input-field"
+            placeholder="14500"
+          />
+        </Field>
+        <Field label="Description">
+          <textarea
+            required
+            rows={6}
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            className="input-field resize-y"
+            placeholder="Seller description from the marketplace listing…"
+          />
+        </Field>
+        <Field label="VIN (optional)">
+          <input
+            value={vin}
+            onChange={(e) => setVin(e.target.value)}
+            className="input-field font-mono uppercase"
+            placeholder="1HGCV1F3XJA000000"
+            maxLength={17}
+          />
+        </Field>
+        <Field label="Source URL (optional)">
+          <input
+            type="url"
+            value={sourceUrl}
+            onChange={(e) => setSourceUrl(e.target.value)}
+            className="input-field"
+            placeholder="https://…"
+          />
+        </Field>
+        <Field label={`Photos (${fileCount})`}>
+          <input
+            type="file"
+            accept="image/*"
+            multiple
+            onChange={(e) => setFiles(e.target.files)}
+            className="block w-full text-sm text-muted file:mr-3 file:rounded-md file:border-0 file:bg-accent-soft file:px-3 file:py-2 file:text-sm file:font-medium file:text-accent-dim"
+          />
+        </Field>
+        {error ? <p className="text-sm text-danger">{error}</p> : null}
+        <button type="submit" disabled={submitting} className="btn-primary w-full">
+          {submitting ? "Submitting…" : "Analyze listing"}
+        </button>
+      </form>
+
+      <section className="border border-panel-border bg-panel p-6 md:p-7">
+        {!listing ? (
+          <div className="flex h-full min-h-72 flex-col justify-center gap-3">
+            <p className="font-display text-2xl text-ink">Report appears here</p>
+            <p className="max-w-sm text-sm leading-relaxed text-muted">
+              After upload, analysis runs asynchronously. This panel updates until the job
+              completes.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-5">
+            <div className="flex items-start justify-between gap-4 border-b border-[var(--line)] pb-4">
+              <div>
+                <p className="font-mono text-xs tracking-wider text-muted uppercase">Status</p>
+                <p className="mt-1 text-lg capitalize text-ink">{listing.status}</p>
+              </div>
+              {listing.report ? (
+                <div className="text-right">
+                  <p className="font-mono text-xs tracking-wider text-muted uppercase">Risk score</p>
+                  <p className={`font-display text-5xl tabular-nums ${scoreColor}`}>
+                    {listing.report.riskScore}
+                  </p>
+                </div>
+              ) : null}
+            </div>
+
+            {listing.error ? <p className="text-sm text-danger">{listing.error}</p> : null}
+
+            {listing.report ? (
+              <>
+                <p className="text-sm leading-relaxed text-muted">{listing.report.summary}</p>
+                <p className="font-mono text-xs text-muted">
+                  Confidence {Math.round(listing.report.confidence * 100)}%
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <MetaChip>History not checked</MetaChip>
+                  <MetaChip>Title not verified</MetaChip>
+                  {listing.report.recalls.checked ? (
+                    <MetaChip>
+                      Recalls: {listing.report.recalls.count}
+                      {listing.report.recalls.parkIt ? " · PARK IT" : ""}
+                    </MetaChip>
+                  ) : null}
+                </div>
+                {listing.report.vinMatch.checked ? (
+                  <p className="text-sm text-ink">
+                    VIN{" "}
+                    {listing.report.vinMatch.matchesListing
+                      ? "agrees with the listing text"
+                      : listing.report.vinMatch.matchesListing === false
+                        ? "conflicts with the listing text"
+                        : "was decoded"}
+                    {listing.report.vinMatch.decoded
+                      ? ` · ${[
+                          listing.report.vinMatch.decoded.modelYear,
+                          listing.report.vinMatch.decoded.make,
+                          listing.report.vinMatch.decoded.model,
+                        ]
+                          .filter(Boolean)
+                          .join(" ")}`
+                      : ""}
+                  </p>
+                ) : null}
+                {listing.report.imageFindings?.length ? (
+                  <ul className="space-y-1 border-t border-[var(--line)] pt-4">
+                    {listing.report.imageFindings.map((line) => (
+                      <li key={line} className="text-sm text-muted">
+                        {line}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+                {listing.report.claimChecks.length ? (
+                  <ul className="space-y-2">
+                    {listing.report.claimChecks.map((check) => (
+                      <li key={check.claim} className="border border-panel-border px-3 py-2.5 text-sm">
+                        <span className="font-mono text-xs uppercase text-accent">{check.verdict}</span>
+                        <p className="text-ink">{check.claim}</p>
+                        <p className="text-muted">{check.detail}</p>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+                {listing.report.flags.length ? (
+                  <ul className="space-y-2">
+                    {listing.report.flags.map((flag) => (
+                      <li key={flag.code} className="border border-panel-border px-3 py-2.5 text-sm">
+                        <span className="font-mono text-xs uppercase text-warn">{flag.severity}</span>
+                        <p className="text-ink">{flag.message}</p>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-sm text-muted">No heuristic flags raised.</p>
+                )}
+                <p className="text-xs leading-relaxed text-muted">{listing.report.disclaimer}</p>
+              </>
+            ) : (
+              <p className="animate-pulse text-sm text-muted">Running analysis…</p>
+            )}
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="block space-y-1.5">
+      <span className="text-xs font-medium tracking-wide text-muted uppercase">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+function MetaChip({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="border border-panel-border bg-paper px-2.5 py-1 font-mono text-[11px] text-muted">
+      {children}
+    </span>
+  );
+}

@@ -15,6 +15,20 @@ async def lifespan(_app: FastAPI):
     yield
 
 
+# Browsers (Firefox in particular) surface a failed CORS check as
+# "NetworkError when attempting to fetch resource". Credentials plus a
+# mismatched or wildcard origin is a common way to trigger that, and this API
+# does not use cookies.
+_LOCAL_ORIGIN_REGEX = (
+    r"https?://("
+    r"localhost|127\.0\.0\.1|\[::1\]|"
+    r"10(?:\.\d{1,3}){3}|"
+    r"192\.168(?:\.\d{1,3}){2}|"
+    r"172\.(?:1[6-9]|2\d|3[0-1])(?:\.\d{1,3}){2}"
+    r")(?::\d+)?$"
+)
+
+
 def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(
@@ -27,7 +41,8 @@ def create_app() -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=origins or ["*"],
-        allow_credentials=True,
+        allow_origin_regex=_LOCAL_ORIGIN_REGEX,
+        allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["*"],
     )

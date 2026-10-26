@@ -4,8 +4,27 @@ from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+def _env_files() -> tuple[str, ...]:
+    """Load the repo-root env file the README tells people to create, then local overrides."""
+    api_dir = Path(__file__).resolve().parents[2]
+    repo_root = api_dir.parent.parent
+    ordered = (repo_root / ".env", api_dir / ".env", Path.cwd() / ".env")
+    seen: list[str] = []
+    for path in ordered:
+        if not path.is_file():
+            continue
+        resolved = str(path.resolve())
+        if resolved not in seen:
+            seen.append(resolved)
+    return tuple(seen)
+
+
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=_env_files() or None,
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
     database_url: str = "sqlite+aiosqlite:///./data/listings.db"
     redis_url: str = "redis://127.0.0.1:6379/0"
@@ -20,10 +39,11 @@ class Settings(BaseSettings):
 
     llm_provider: str = "stub"  # stub | gemini | ollama
     gemini_api_key: str = ""
+    gemini_model: str = "gemini-2.5-flash"
     ollama_base_url: str = "http://127.0.0.1:11434"
     ollama_model: str = "qwen2.5vl:7b"
 
-    cors_origins: str = "http://127.0.0.1:43123,http://localhost:43123"
+    cors_origins: str = "http://127.0.0.1:43123,http://localhost:43123,http://127.0.0.1:3000,http://localhost:3000"
 
     @property
     def supabase_configured(self) -> bool:

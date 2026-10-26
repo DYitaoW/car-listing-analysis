@@ -2,18 +2,27 @@ from __future__ import annotations
 
 import json
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from listing_validator_api.config import get_settings
 from listing_validator_api.db import get_session
-from listing_validator_api.jobs import enqueue_analysis
+from listing_validator_api.jobs import enqueue_redis, run_analysis_job
 from listing_validator_api.models import Listing, ListingImage
 from listing_validator_api.schemas import AnalysisReport, ListingCreate, ListingImageOut, ListingOut
 from listing_validator_api.storage import get_storage
 
 router = APIRouter(prefix="/listings", tags=["listings"])
+_MAX_IMAGE_BYTES = 15 * 1024 * 1024
+
+
+def _schedule(background: BackgroundTasks, listing_id: str) -> None:
+    if get_settings().job_backend == "redis":
+        background.add_task(enqueue_redis, listing_id)
+    else:
+        background.add_task(run_analysis_job, listing_id)
 
 
 def _to_out(listing: Listing) -> ListingOut:
@@ -63,6 +72,7 @@ async def create_listing(
 @router.post("/{listing_id}/images", response_model=ListingOut)
 async def upload_images(
     listing_id: str,
+    background: BackgroundTasks,
     files: list[UploadFile] = File(...),
     session: AsyncSession = Depends(get_session),
 ) -> ListingOut:
@@ -77,10 +87,13 @@ async def upload_images(
 
     storage = get_storage()
     start = len(listing.images)
-    for index, upload in enumerate(files):
+    stored = 0
+    for upload in files:
         data = await upload.read()
         if not data:
             continue
+        if len(data) > _MAX_IMAGE_BYTES:
+            raise HTTPException(status_code=413, detail="Each photo must be under 15 MB")
         content_type = upload.content_type or "application/octet-stream"
         path = await storage.upload(listing.id, upload.filename or "photo.jpg", data, content_type)
         listing.images.append(
@@ -88,24 +101,28 @@ async def upload_images(
                 listing_id=listing.id,
                 path=path,
                 content_type=content_type,
-                sort_order=start + index,
+                sort_order=start + stored,
             )
         )
+        stored += 1
+    if stored == 0:
+        raise HTTPException(status_code=400, detail="At least one non-empty image is required")
 
     listing.status = "pending"
+    listing.error = None
     await session.commit()
-    await session.refresh(listing)
     result = await session.execute(
         select(Listing).where(Listing.id == listing_id).options(selectinload(Listing.images))
     )
     listing = result.scalar_one()
-    enqueue_analysis(listing.id)
+    _schedule(background, listing.id)
     return _to_out(listing)
 
 
 @router.post("/{listing_id}/analyze", response_model=ListingOut)
 async def trigger_analyze(
     listing_id: str,
+    background: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
 ) -> ListingOut:
     result = await session.execute(
@@ -114,7 +131,7 @@ async def trigger_analyze(
     listing = result.scalar_one_or_none()
     if listing is None:
         raise HTTPException(status_code=404, detail="Listing not found")
-    enqueue_analysis(listing.id)
+    _schedule(background, listing.id)
     return _to_out(listing)
 
 
