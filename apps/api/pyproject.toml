@@ -1,0 +1,31 @@
+[project]
+name = "listing-validator-api"
+version = "0.1.0"
+description = "AI risk assessment API for user-submitted vehicle listings"
+readme = "README.md"
+authors = [
+    { name = "Cursor Agent", email = "cursoragent@cursor.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "aiosqlite>=0.22.1",
+    "arq>=0.28.0",
+    "fastapi>=0.162.0",
+    "greenlet>=3.5.6",
+    "httpx>=0.28.1",
+    "pydantic>=2.14.1",
+    "pydantic-settings>=2.16.1",
+    "python-dotenv>=1.2.4",
+    "python-multipart>=0.0.32",
+    "redis>=5.3.1",
+    "sqlalchemy[asyncio]>=2.1.6",
+    "supabase>=2.33.0",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[project.scripts]
+listing-validator-api = "listing_validator_api:main"
+
+[build-system]
+requires = ["uv_build>=0.13.5,<0.14.0"]
+build-backend = "uv_build"

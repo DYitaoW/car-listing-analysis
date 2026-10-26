@@ -1,0 +1,60 @@
+@import "tailwindcss";
+
+:root {
+  --background: #0c1210;
+  --foreground: #e8f0ea;
+  --muted: #9db0a4;
+  --panel: #14201a;
+  --panel-border: #24362c;
+  --accent: #3dd68c;
+  --accent-dim: #1f8f5a;
+  --warn: #e8b84a;
+  --danger: #e86a5a;
+  --grid: rgba(61, 214, 140, 0.06);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-panel: var(--panel);
+  --color-panel-border: var(--panel-border);
+  --color-accent: var(--accent);
+  --color-accent-dim: var(--accent-dim);
+  --color-warn: var(--warn);
+  --color-danger: var(--danger);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background:
+    radial-gradient(1200px 600px at 10% -10%, rgba(61, 214, 140, 0.12), transparent 55%),
+    radial-gradient(900px 500px at 100% 0%, rgba(232, 184, 74, 0.08), transparent 50%),
+    linear-gradient(180deg, #0c1210 0%, #0a100e 100%);
+  background-attachment: fixed;
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+.grid-overlay {
+  background-image:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+
+.input-field {
+  width: 100%;
+  border-radius: 0.75rem;
+  border: 1px solid var(--panel-border);
+  background: rgba(8, 14, 12, 0.65);
+  padding: 0.7rem 0.85rem;
+  color: var(--foreground);
+  outline: none;
+}
+
+.input-field:focus {
+  border-color: var(--accent-dim);
+  box-shadow: 0 0 0 3px rgba(61, 214, 140, 0.15);
+}
