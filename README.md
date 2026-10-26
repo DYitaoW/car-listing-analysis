@@ -39,64 +39,53 @@ docker-compose.yml   Postgres + Redis (optional)
 
 ## Quick start
 
-### Prerequisites
+### Prerequisites (once)
 
-- **Node.js 20+** and **pnpm** (`npm install -g pnpm`)
-- **Python 3.12+** for the API ([python.org](https://www.python.org/downloads/))
-- **`uv` is optional.** If it is missing, the repo falls back to `apps/api/requirements.txt` via pip.
+- **Node.js 20+** from [nodejs.org](https://nodejs.org/)
+- **Python 3.12+** from [python.org](https://www.python.org/downloads/) (on Windows, check **Add python.exe to PATH**)
 
-### 1. Environment
+`uv` and global `pnpm` are optional — the install scripts handle them.
 
-```bash
-cp .env.example .env
-# Optional: add SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY
-# Create a public or authenticated bucket named listing-images in Supabase
-```
+### Windows (simplest)
 
-On Windows Command Prompt:
+In File Explorer, open the project folder, then double-click:
 
-```bat
-copy .env.example .env
-```
+1. **`install.cmd`** — installs everything (first time only)
+2. **`start.cmd`** — starts the API + website and opens the browser
 
-### 2. Install + run (recommended)
-
-```bash
-pnpm install
-pnpm setup:api
-pnpm dev
-```
-
-Windows Command Prompt:
+Or in Command Prompt from the project folder:
 
 ```bat
-scripts\setup-web.cmd
-scripts\setup-api.cmd
-pnpm dev
+install.cmd
+start.cmd
 ```
 
-If `uv` / Node helpers are unavailable, install and run the API with pip only:
+Open [http://127.0.0.1:43123](http://127.0.0.1:43123) if the browser does not open.
 
-```bat
-scripts\setup-api-pip.cmd
-scripts\run-api-pip.cmd
-```
-
-`pnpm setup:api` / `scripts\setup-api.cmd` use `uv sync` when `uv` is installed; otherwise they create `apps/api/.venv` and install from `apps/api/requirements.txt`.
-
-That starts the API on port 43124 and the web app on port 43123. The browser talks to `/api/lv` on the web origin, and the Next server proxies that to the API. Calling `127.0.0.1:43124` from the page fails with Firefox's `NetworkError when attempting to fetch resource` whenever the page is not served from that same machine.
-
-Health: [http://127.0.0.1:43124/health](http://127.0.0.1:43124/health)
-
-Open [http://127.0.0.1:43123](http://127.0.0.1:43123).
-
-Web only:
+### macOS / Linux / Git Bash
 
 ```bash
-pnpm dev:web
+./install.sh
+./start.sh
 ```
+
+Or:
+
+```bash
+pnpm install:app
+pnpm start
+```
+
+### What you get
+
+- Web: [http://127.0.0.1:43123](http://127.0.0.1:43123) (landing page + `/check`)
+- API: [http://127.0.0.1:43124/health](http://127.0.0.1:43124/health)
+
+The browser talks to `/api/lv` on the web origin; the Next server proxies that to the API.
 
 `LLM_PROVIDER=stub` still inspects uploaded photos and, when a VIN is present, calls NHTSA. Set `LLM_PROVIDER=gemini` (with `GEMINI_API_KEY`) or `LLM_PROVIDER=ollama` to compare photos with the description.
+
+Copy `.env.example` to `.env` for optional Supabase / Gemini keys (`install.cmd` / `install.sh` do this automatically).
 
 ### API dependency files
 
@@ -106,7 +95,7 @@ pnpm dev:web
 | `apps/api/requirements-dev.txt` | Tests (`pytest`) |
 | `apps/api/pyproject.toml` + `uv.lock` | `uv sync` when you have uv |
 
-### 3. Mobile
+### Mobile
 
 ```bash
 pnpm --filter mobile add expo-image-picker   # if needed

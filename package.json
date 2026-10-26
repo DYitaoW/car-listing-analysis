@@ -2,6 +2,8 @@
   "name": "listing-validator",
   "private": true,
   "scripts": {
+    "install:app": "node scripts/install-app.mjs",
+    "start": "node scripts/start-app.mjs",
     "dev": "pnpm run --parallel dev:web dev:api",
     "dev:web": "pnpm --filter web exec next dev --port 43123 --hostname 127.0.0.1",
     "dev:mobile": "pnpm --filter mobile start",
