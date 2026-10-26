@@ -22,12 +22,15 @@ export default function LandingPage() {
               not a certified inspection.
             </p>
             <div className="rise rise-delay-3 mt-8 flex flex-wrap items-center gap-3">
-              <Link href="/check" className="btn-primary bg-white text-ink hover:bg-accent-soft hover:text-accent-dim">
+              <Link
+                href="/check"
+                className="inline-flex items-center justify-center rounded-md bg-white px-5 py-3.5 text-sm font-semibold text-ink transition hover:-translate-y-px hover:bg-[#e8f3f3]"
+              >
                 Check a listing
               </Link>
               <Link
                 href="/#how-it-works"
-                className="btn-secondary border-white/30 bg-white/10 text-white hover:border-white/55 hover:bg-white/16"
+                className="inline-flex items-center justify-center rounded-md border border-white/40 bg-white/10 px-5 py-3.5 text-sm font-semibold text-white backdrop-blur-sm transition hover:border-white/70 hover:bg-white/16"
               >
                 How it works
               </Link>
@@ -122,7 +125,10 @@ export default function LandingPage() {
               Upload photos and seller copy. A risk report appears when analysis finishes.
             </p>
           </div>
-          <Link href="/check" className="btn-primary bg-white text-ink hover:bg-accent-soft">
+          <Link
+            href="/check"
+            className="inline-flex items-center justify-center rounded-md bg-white px-5 py-3.5 text-sm font-semibold text-ink transition hover:bg-accent-soft"
+          >
             Open the checker
           </Link>
         </div>
