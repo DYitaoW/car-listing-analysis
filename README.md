@@ -39,31 +39,63 @@ docker-compose.yml   Postgres + Redis (optional)
 
 ## Quick start
 
-### 1. Environment
+### Prerequisites (once)
 
-```bash
-cp .env.example .env
-# Optional: add SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY
-# Create a public or authenticated bucket named listing-images in Supabase
+- **Node.js 20+** from [nodejs.org](https://nodejs.org/)
+- **Python 3.12+** from [python.org](https://www.python.org/downloads/) (on Windows, check **Add python.exe to PATH**)
+
+`uv` and global `pnpm` are optional — the install scripts handle them.
+
+### Windows (simplest)
+
+In File Explorer, open the project folder, then double-click:
+
+1. **`install.cmd`** — installs everything (first time only)
+2. **`start.cmd`** — starts the API + website and opens the browser
+
+Or in Command Prompt from the project folder:
+
+```bat
+install.cmd
+start.cmd
 ```
 
-### 2. API and web
+Open [http://127.0.0.1:43123](http://127.0.0.1:43123) if the browser does not open.
+
+### macOS / Linux / Git Bash
 
 ```bash
-pnpm install
-cd apps/api && uv sync && cd ../..
-pnpm dev
+./install.sh
+./start.sh
 ```
 
-That starts the API on port 43124 and the web app on port 43123. The browser talks to `/api/lv` on the web origin, and the Next server proxies that to the API. Calling `127.0.0.1:43124` from the page fails with Firefox's `NetworkError when attempting to fetch resource` whenever the page is not served from that same machine.
+Or:
 
-Health: [http://127.0.0.1:43124/health](http://127.0.0.1:43124/health)
+```bash
+pnpm install:app
+pnpm start
+```
 
-Open [http://127.0.0.1:43123](http://127.0.0.1:43123).
+### What you get
+
+- Web: [http://127.0.0.1:43123](http://127.0.0.1:43123) (landing page + `/check`)
+- API: [http://127.0.0.1:43124/health](http://127.0.0.1:43124/health)
+
+The browser talks to `/api/lv` on the web origin; the Next server proxies that to the API.
 
 `LLM_PROVIDER=stub` still inspects uploaded photos and, when a VIN is present, calls NHTSA. Set `LLM_PROVIDER=gemini` (with `GEMINI_API_KEY`) or `LLM_PROVIDER=ollama` to compare photos with the description.
 
-### 4. Mobile
+Copy `.env.example` to `.env` for optional Supabase / Gemini keys (`install.cmd` / `install.sh` do this automatically).
+
+### API dependency files
+
+| File | Use |
+| --- | --- |
+| `apps/api/requirements.txt` | `pip install -r requirements.txt` (no uv) |
+| `apps/api/requirements-dev.txt` | Tests (`pytest`) |
+| `apps/api/pyproject.toml` + `uv.lock` | `uv sync` when you have uv |
+
+### Mobile
 
 ```bash
 pnpm --filter mobile add expo-image-picker   # if needed
