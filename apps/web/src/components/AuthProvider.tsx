@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import type { Session, User } from "@supabase/supabase-js";
+import { api } from "@/lib/api";
 import { getSupabase, supabaseConfigured } from "@/lib/supabase";
 
 type AuthContextValue = {
@@ -17,10 +18,14 @@ type AuthContextValue = {
   loading: boolean;
   session: Session | null;
   user: User | null;
+  identities: string[];
   signInWithPassword: (email: string, password: string) => Promise<void>;
   signUpWithPassword: (email: string, password: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
+  requestPasswordReset: (email: string) => Promise<void>;
+  updatePassword: (password: string) => Promise<void>;
+  deleteAccount: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -86,18 +91,60 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (error) throw error;
   }, []);
 
+  const requestPasswordReset = useCallback(async (email: string) => {
+    const supabase = getSupabase();
+    if (!supabase) throw new Error("Supabase Auth is not configured.");
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: `${window.location.origin}/settings?reset=1`,
+    });
+    if (error) throw error;
+  }, []);
+
+  const updatePassword = useCallback(async (password: string) => {
+    const supabase = getSupabase();
+    if (!supabase) throw new Error("Supabase Auth is not configured.");
+    const { error } = await supabase.auth.updateUser({ password });
+    if (error) throw error;
+  }, []);
+
+  const deleteAccount = useCallback(async () => {
+    await api.deleteAccount();
+    const supabase = getSupabase();
+    if (supabase) await supabase.auth.signOut();
+  }, []);
+
+  const identities = useMemo(() => {
+    const list = session?.user?.identities ?? [];
+    return [...new Set(list.map((item) => item.provider).filter(Boolean))];
+  }, [session]);
+
   const value = useMemo<AuthContextValue>(
     () => ({
       configured: supabaseConfigured,
       loading,
       session,
       user: session?.user ?? null,
+      identities,
       signInWithPassword,
       signUpWithPassword,
       signInWithGoogle,
       signOut,
+      requestPasswordReset,
+      updatePassword,
+      deleteAccount,
     }),
-    [loading, session, signInWithGoogle, signInWithPassword, signOut, signUpWithPassword],
+    [
+      deleteAccount,
+      identities,
+      loading,
+      requestPasswordReset,
+      session,
+      signInWithGoogle,
+      signInWithPassword,
+      signOut,
+      signUpWithPassword,
+      updatePassword,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

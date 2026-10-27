@@ -80,12 +80,18 @@ export function createApiClient(
     if (!res.ok) {
       throw new Error(errorMessage(res.status, await res.text()));
     }
-    return res.json() as Promise<T>;
+    if (res.status === 204) return null as T;
+    const text = await res.text();
+    if (!text) return null as T;
+    return JSON.parse(text) as T;
   }
 
   return {
     health: () => request<HealthResponse>("/health"),
     me: () => request<AuthUser>("/me"),
+    deleteAccount: async () => {
+      await request<null>("/me", { method: "DELETE" });
+    },
     listListings: () => request<ListingSummary[]>("/listings"),
     createListing: (body: CreateListingRequest) =>
       request<Listing>("/listings", {

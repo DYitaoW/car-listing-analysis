@@ -139,7 +139,9 @@ AUTH_REQUIRED=true
 
 Without Supabase Auth vars, the site still works anonymously and images land under `apps/api/data/uploads`.
 
-With Auth configured, `/check` requires sign-in and listings are saved under **My listings**.
+With Auth configured, `/check` requires sign-in and listings are saved under **My listings**. Account password reset, sign-out, and delete live at `/settings`.
+
+The homepage includes a **demo listing** (`/#demo`, or `/check?demo=1`). Write endpoints are rate-limited per IP/user (`RATE_LIMIT_ENABLED=true`).
 
 ## Optional Docker services
 

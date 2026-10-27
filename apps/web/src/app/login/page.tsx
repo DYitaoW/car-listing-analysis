@@ -11,9 +11,16 @@ function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
   const next = params.get("next") || "/check";
-  const { configured, user, loading, signInWithPassword, signUpWithPassword, signInWithGoogle } =
-    useAuth();
-  const [mode, setMode] = useState<"signin" | "signup">("signin");
+  const {
+    configured,
+    user,
+    loading,
+    signInWithPassword,
+    signUpWithPassword,
+    signInWithGoogle,
+    requestPasswordReset,
+  } = useAuth();
+  const [mode, setMode] = useState<"signin" | "signup" | "reset">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -30,7 +37,11 @@ function LoginForm() {
     setMessage(null);
     setBusy(true);
     try {
-      if (mode === "signin") {
+      if (mode === "reset") {
+        await requestPasswordReset(email.trim());
+        setMessage("Password reset email sent. Use the link to choose a new password on Settings.");
+        setMode("signin");
+      } else if (mode === "signin") {
         await signInWithPassword(email.trim(), password);
         router.replace(next);
       } else {
@@ -77,28 +88,34 @@ function LoginForm() {
         <>
           <p className="font-mono text-xs tracking-[0.2em] text-accent uppercase">Account</p>
           <h1 className="mt-2 font-display text-3xl text-ink">
-            {mode === "signin" ? "Sign in" : "Create account"}
+            {mode === "signin" ? "Sign in" : mode === "signup" ? "Create account" : "Reset password"}
           </h1>
           <p className="mt-2 text-sm text-muted">
-            Save listing checks to your account. Google sign-in works once Google is enabled in
-            Supabase Auth.
+            {mode === "reset"
+              ? "We’ll email a link that opens Settings so you can choose a new password."
+              : "Save listing checks to your account. Google sign-in works once Google is enabled in Supabase Auth."}
           </p>
 
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void onGoogle()}
-            className="mt-6 flex w-full items-center justify-center gap-2 rounded-md border border-panel-border bg-paper px-4 py-3 text-sm font-semibold text-ink transition hover:border-accent"
-          >
-            <GoogleMark />
-            Continue with Google
-          </button>
-
-          <div className="my-5 flex items-center gap-3 text-xs tracking-wide text-muted uppercase">
-            <span className="h-px flex-1 bg-[var(--line)]" />
-            or email
-            <span className="h-px flex-1 bg-[var(--line)]" />
-          </div>
+          {mode !== "reset" ? (
+            <>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void onGoogle()}
+                className="mt-6 flex w-full items-center justify-center gap-2 rounded-md border border-panel-border bg-paper px-4 py-3 text-sm font-semibold text-ink transition hover:border-accent"
+              >
+                <GoogleMark />
+                Continue with Google
+              </button>
+              <div className="my-5 flex items-center gap-3 text-xs tracking-wide text-muted uppercase">
+                <span className="h-px flex-1 bg-[var(--line)]" />
+                or email
+                <span className="h-px flex-1 bg-[var(--line)]" />
+              </div>
+            </>
+          ) : (
+            <div className="mt-6" />
+          )}
 
           <form onSubmit={onSubmit} className="space-y-3">
             <label className="block space-y-1.5">
@@ -112,36 +129,77 @@ function LoginForm() {
                 className="input-field"
               />
             </label>
-            <label className="block space-y-1.5">
-              <span className="text-xs font-medium tracking-wide text-muted uppercase">Password</span>
-              <input
-                required
-                type="password"
-                minLength={6}
-                autoComplete={mode === "signin" ? "current-password" : "new-password"}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="input-field"
-              />
-            </label>
+            {mode !== "reset" ? (
+              <label className="block space-y-1.5">
+                <span className="text-xs font-medium tracking-wide text-muted uppercase">Password</span>
+                <input
+                  required
+                  type="password"
+                  minLength={6}
+                  autoComplete={mode === "signin" ? "current-password" : "new-password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="input-field"
+                />
+              </label>
+            ) : null}
             {error ? <p className="text-sm text-danger">{error}</p> : null}
             {message ? <p className="text-sm text-accent-dim">{message}</p> : null}
             <button type="submit" disabled={busy} className="btn-primary w-full">
-              {busy ? "Working…" : mode === "signin" ? "Sign in" : "Create account"}
+              {busy
+                ? "Working…"
+                : mode === "signin"
+                  ? "Sign in"
+                  : mode === "signup"
+                    ? "Create account"
+                    : "Send reset email"}
             </button>
           </form>
 
-          <button
-            type="button"
-            className="mt-4 text-sm text-muted hover:text-ink"
-            onClick={() => {
-              setMode(mode === "signin" ? "signup" : "signin");
-              setError(null);
-              setMessage(null);
-            }}
-          >
-            {mode === "signin" ? "Need an account? Create one" : "Already have an account? Sign in"}
-          </button>
+          <div className="mt-4 flex flex-col gap-2 text-sm text-muted">
+            {mode === "reset" ? (
+              <button
+                type="button"
+                className="text-left hover:text-ink"
+                onClick={() => {
+                  setMode("signin");
+                  setError(null);
+                  setMessage(null);
+                }}
+              >
+                Back to sign in
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="text-left hover:text-ink"
+                  onClick={() => {
+                    setMode(mode === "signin" ? "signup" : "signin");
+                    setError(null);
+                    setMessage(null);
+                  }}
+                >
+                  {mode === "signin"
+                    ? "Need an account? Create one"
+                    : "Already have an account? Sign in"}
+                </button>
+                {mode === "signin" ? (
+                  <button
+                    type="button"
+                    className="text-left hover:text-ink"
+                    onClick={() => {
+                      setMode("reset");
+                      setError(null);
+                      setMessage(null);
+                    }}
+                  >
+                    Forgot password?
+                  </button>
+                ) : null}
+              </>
+            )}
+          </div>
         </>
       )}
     </div>

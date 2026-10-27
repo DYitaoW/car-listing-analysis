@@ -5,7 +5,7 @@ import { useAuth } from "@/components/AuthProvider";
 
 export function SiteHeader({ tone = "light" }: { tone?: "light" | "on-hero" }) {
   const onHero = tone === "on-hero";
-  const { configured, loading, user, signOut } = useAuth();
+  const { configured, loading, user } = useAuth();
 
   return (
     <header
@@ -25,22 +25,32 @@ export function SiteHeader({ tone = "light" }: { tone?: "light" | "on-hero" }) {
       </Link>
       <nav className="flex items-center gap-2 sm:gap-3">
         <Link
-          href="/#how-it-works"
+          href="/#demo"
           className={`hidden text-sm font-medium sm:inline ${
             onHero ? "text-white/80 hover:text-white" : "text-muted hover:text-ink"
           }`}
         >
-          How it works
+          Demo
         </Link>
         {configured && user ? (
-          <Link
-            href="/listings"
-            className={`hidden text-sm font-medium sm:inline ${
-              onHero ? "text-white/80 hover:text-white" : "text-muted hover:text-ink"
-            }`}
-          >
-            My listings
-          </Link>
+          <>
+            <Link
+              href="/listings"
+              className={`hidden text-sm font-medium sm:inline ${
+                onHero ? "text-white/80 hover:text-white" : "text-muted hover:text-ink"
+              }`}
+            >
+              My listings
+            </Link>
+            <Link
+              href="/settings"
+              className={`hidden text-sm font-medium sm:inline ${
+                onHero ? "text-white/80 hover:text-white" : "text-muted hover:text-ink"
+              }`}
+            >
+              Settings
+            </Link>
+          </>
         ) : null}
         <Link
           href="/check"
@@ -54,16 +64,14 @@ export function SiteHeader({ tone = "light" }: { tone?: "light" | "on-hero" }) {
         </Link>
         {configured && !loading ? (
           user ? (
-            <button
-              type="button"
-              onClick={() => void signOut()}
-              className={`hidden text-sm font-medium md:inline ${
+            <Link
+              href="/settings"
+              className={`text-sm font-medium md:hidden ${
                 onHero ? "text-white/80 hover:text-white" : "text-muted hover:text-ink"
               }`}
-              title={user.email ?? user.id}
             >
-              Sign out
-            </button>
+              Account
+            </Link>
           ) : (
             <Link
               href="/login"

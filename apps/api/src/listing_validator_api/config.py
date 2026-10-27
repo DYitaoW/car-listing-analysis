@@ -48,6 +48,8 @@ class Settings(BaseSettings):
 
     cors_origins: str = "http://127.0.0.1:43123,http://localhost:43123,http://127.0.0.1:3000,http://localhost:3000"
 
+    rate_limit_enabled: bool = True
+
     @property
     def supabase_configured(self) -> bool:
         return bool(self.supabase_url and self.supabase_service_role_key)

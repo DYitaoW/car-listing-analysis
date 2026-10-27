@@ -6,18 +6,20 @@ import { useEffect, useMemo, useState } from "react";
 import type { Listing } from "@listing-validator/types";
 import { useAuth } from "@/components/AuthProvider";
 import { api, apiBaseUrl } from "@/lib/api";
+import { DEMO_LISTING, DEMO_LISTING_INPUT } from "@/lib/demoListing";
 
 export function Checker() {
   const params = useSearchParams();
   const existingId = params.get("id");
+  const isDemo = params.get("demo") === "1";
   const { configured, loading: authLoading, user } = useAuth();
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [price, setPrice] = useState("");
-  const [vin, setVin] = useState("");
-  const [sourceUrl, setSourceUrl] = useState("");
+  const [title, setTitle] = useState(isDemo ? DEMO_LISTING_INPUT.title : "");
+  const [description, setDescription] = useState(isDemo ? DEMO_LISTING_INPUT.description : "");
+  const [price, setPrice] = useState(isDemo ? DEMO_LISTING_INPUT.price : "");
+  const [vin, setVin] = useState(isDemo ? DEMO_LISTING_INPUT.vin : "");
+  const [sourceUrl, setSourceUrl] = useState(isDemo ? DEMO_LISTING_INPUT.sourceUrl : "");
   const [files, setFiles] = useState<FileList | null>(null);
-  const [listing, setListing] = useState<Listing | null>(null);
+  const [listing, setListing] = useState<Listing | null>(isDemo ? DEMO_LISTING : null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [storageMode, setStorageMode] = useState<string>("…");
@@ -43,7 +45,7 @@ export function Checker() {
   }, []);
 
   useEffect(() => {
-    if (!existingId || authLoading) return;
+    if (isDemo || !existingId || authLoading) return;
     if (configured && !user) return;
     let cancelled = false;
     api
@@ -57,11 +59,12 @@ export function Checker() {
     return () => {
       cancelled = true;
     };
-  }, [authLoading, configured, existingId, user]);
+  }, [authLoading, configured, existingId, isDemo, user]);
 
   const listingId = listing?.id;
   const listingStatus = listing?.status;
   useEffect(() => {
+    if (isDemo) return;
     if (!listingId || listingStatus === "completed" || listingStatus === "failed") return;
     const id = listingId;
     let cancelled = false;
@@ -79,7 +82,7 @@ export function Checker() {
       cancelled = true;
       clearInterval(timer);
     };
-  }, [listingId, listingStatus]);
+  }, [isDemo, listingId, listingStatus]);
 
   const fileCount = files?.length ?? 0;
 
@@ -97,6 +100,9 @@ export function Checker() {
     setSubmitting(true);
     setListing(null);
     try {
+      if (isDemo) {
+        throw new Error("Demo mode is read-only. Clear ?demo=1 or open Check a listing to run a real analysis.");
+      }
       if (!files || files.length === 0) {
         throw new Error("Add at least one listing photo.");
       }
@@ -116,7 +122,7 @@ export function Checker() {
     }
   }
 
-  const needsSignIn = configured && !authLoading && !user && authMode === "required";
+  const needsSignIn = !isDemo && configured && !authLoading && !user && authMode === "required";
 
   if (needsSignIn) {
     return (
@@ -146,6 +152,15 @@ export function Checker() {
           </p>
         </div>
         {apiError ? <p className="text-sm text-danger">{apiError}</p> : null}
+        {isDemo ? (
+          <p className="text-xs text-muted">
+            Demo mode shows a sample report only.{" "}
+            <Link href="/check" className="text-accent hover:text-accent-dim">
+              Start a real check
+            </Link>
+            .
+          </p>
+        ) : null}
         {configured && user ? (
           <p className="text-xs text-muted">
             Signed in as <span className="text-ink">{user.email ?? user.id}</span> — this check will be
