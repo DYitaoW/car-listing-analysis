@@ -1,21 +1,30 @@
 "use client";
 
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import type { Listing } from "@listing-validator/types";
+import { useAuth } from "@/components/AuthProvider";
 import { api, apiBaseUrl } from "@/lib/api";
+import { DEMO_LISTING, DEMO_LISTING_INPUT } from "@/lib/demoListing";
 
 export function Checker() {
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [price, setPrice] = useState("");
-  const [vin, setVin] = useState("");
-  const [sourceUrl, setSourceUrl] = useState("");
+  const params = useSearchParams();
+  const existingId = params.get("id");
+  const isDemo = params.get("demo") === "1";
+  const { configured, loading: authLoading, user } = useAuth();
+  const [title, setTitle] = useState(isDemo ? DEMO_LISTING_INPUT.title : "");
+  const [description, setDescription] = useState(isDemo ? DEMO_LISTING_INPUT.description : "");
+  const [price, setPrice] = useState(isDemo ? DEMO_LISTING_INPUT.price : "");
+  const [vin, setVin] = useState(isDemo ? DEMO_LISTING_INPUT.vin : "");
+  const [sourceUrl, setSourceUrl] = useState(isDemo ? DEMO_LISTING_INPUT.sourceUrl : "");
   const [files, setFiles] = useState<FileList | null>(null);
-  const [listing, setListing] = useState<Listing | null>(null);
+  const [listing, setListing] = useState<Listing | null>(isDemo ? DEMO_LISTING : null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [storageMode, setStorageMode] = useState<string>("…");
   const [visionMode, setVisionMode] = useState<string>("…");
+  const [authMode, setAuthMode] = useState<string>("…");
   const [apiError, setApiError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -24,18 +33,38 @@ export function Checker() {
       .then((h) => {
         setStorageMode(h.storage);
         setVisionMode(h.llmProvider);
+        setAuthMode(h.auth);
         setApiError(null);
       })
       .catch((err: unknown) => {
         setStorageMode("unreachable");
         setVisionMode("unknown");
+        setAuthMode("unknown");
         setApiError(err instanceof Error ? err.message : "Cannot reach the analysis API.");
       });
   }, []);
 
+  useEffect(() => {
+    if (isDemo || !existingId || authLoading) return;
+    if (configured && !user) return;
+    let cancelled = false;
+    api
+      .getListing(existingId)
+      .then((row) => {
+        if (!cancelled) setListing(row);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : "Could not load listing");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [authLoading, configured, existingId, isDemo, user]);
+
   const listingId = listing?.id;
   const listingStatus = listing?.status;
   useEffect(() => {
+    if (isDemo) return;
     if (!listingId || listingStatus === "completed" || listingStatus === "failed") return;
     const id = listingId;
     let cancelled = false;
@@ -53,7 +82,7 @@ export function Checker() {
       cancelled = true;
       clearInterval(timer);
     };
-  }, [listingId, listingStatus]);
+  }, [isDemo, listingId, listingStatus]);
 
   const fileCount = files?.length ?? 0;
 
@@ -71,6 +100,9 @@ export function Checker() {
     setSubmitting(true);
     setListing(null);
     try {
+      if (isDemo) {
+        throw new Error("Demo mode is read-only. Clear ?demo=1 or open Check a listing to run a real analysis.");
+      }
       if (!files || files.length === 0) {
         throw new Error("Add at least one listing photo.");
       }
@@ -90,6 +122,23 @@ export function Checker() {
     }
   }
 
+  const needsSignIn = !isDemo && configured && !authLoading && !user && authMode === "required";
+
+  if (needsSignIn) {
+    return (
+      <div className="border border-panel-border bg-panel p-6 md:p-8">
+        <h2 className="font-display text-2xl text-ink">Sign in to check a listing</h2>
+        <p className="mt-2 max-w-lg text-sm text-muted">
+          When Supabase Auth is enabled, listing checks are saved to your account so you can reopen
+          them later.
+        </p>
+        <Link href="/login?next=/check" className="btn-primary mt-5 inline-flex">
+          Sign in
+        </Link>
+      </div>
+    );
+  }
+
   return (
     <div className="grid gap-8 lg:grid-cols-2 lg:gap-10">
       <form
@@ -99,10 +148,25 @@ export function Checker() {
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--line)] pb-4">
           <p className="text-sm font-semibold text-ink">Listing details</p>
           <p className="font-mono text-[11px] tracking-wide text-muted uppercase">
-            {storageMode} · {visionMode} · {apiBaseUrl}
+            {storageMode} · {visionMode} · {authMode} · {apiBaseUrl}
           </p>
         </div>
         {apiError ? <p className="text-sm text-danger">{apiError}</p> : null}
+        {isDemo ? (
+          <p className="text-xs text-muted">
+            Demo mode shows a sample report only.{" "}
+            <Link href="/check" className="text-accent hover:text-accent-dim">
+              Start a real check
+            </Link>
+            .
+          </p>
+        ) : null}
+        {configured && user ? (
+          <p className="text-xs text-muted">
+            Signed in as <span className="text-ink">{user.email ?? user.id}</span> — this check will be
+            saved to your account.
+          </p>
+        ) : null}
 
         <Field label="Listing title">
           <input

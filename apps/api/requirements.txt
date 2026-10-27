@@ -98,6 +98,7 @@ pydantic-settings==2.16.1
     # via listing-validator-api
 pyjwt==2.15.1
     # via
+    #   listing-validator-api
     #   redis
     #   supabase-auth
 python-dotenv==1.2.4

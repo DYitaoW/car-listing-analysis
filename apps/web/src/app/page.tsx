@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { DemoListingPreview } from "@/components/DemoListingPreview";
 import { HeroVisual } from "@/components/HeroVisual";
 import { SiteFooter } from "@/components/SiteFooter";
 import { SiteHeader } from "@/components/SiteHeader";
@@ -29,10 +30,10 @@ export default function LandingPage() {
                 Check a listing
               </Link>
               <Link
-                href="/#how-it-works"
+                href="/#demo"
                 className="inline-flex items-center justify-center rounded-md border border-white/40 bg-white/10 px-5 py-3.5 text-sm font-semibold text-white backdrop-blur-sm transition hover:border-white/70 hover:bg-white/16"
               >
-                How it works
+                View demo report
               </Link>
             </div>
           </div>
@@ -71,7 +72,9 @@ export default function LandingPage() {
         </ol>
       </section>
 
-      <section className="border-y border-[var(--line)] bg-paper">
+      <DemoListingPreview />
+
+      <section className="border-b border-[var(--line)] bg-background">
         <div className="mx-auto grid w-full max-w-6xl gap-12 px-5 py-20 md:grid-cols-[1.1fr_0.9fr] md:items-center md:px-8 md:py-28">
           <div>
             <p className="font-mono text-xs tracking-[0.2em] text-accent uppercase">What we check</p>

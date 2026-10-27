@@ -1,13 +1,21 @@
-import type { CreateListingRequest, Listing } from "@listing-validator/types";
+import type {
+  AuthUser,
+  CreateListingRequest,
+  Listing,
+  ListingSummary,
+} from "@listing-validator/types";
 
-export type { CreateListingRequest, Listing };
+export type { AuthUser, CreateListingRequest, Listing, ListingSummary };
 
 export interface HealthResponse {
   status: string;
   storage: string;
   llmProvider: string;
   jobBackend: string;
+  auth: "required" | "optional" | "disabled";
 }
+
+export type AccessTokenProvider = () => Promise<string | null> | string | null;
 
 function errorMessage(status: number, text: string): string {
   if (!text) return `Request failed (${status})`;
@@ -46,10 +54,18 @@ function explainNetworkError(err: unknown, root: string): Error {
   return new Error(`Cannot reach the analysis API. ${hint} (${raw})`);
 }
 
-export function createApiClient(baseUrl: string) {
+export function createApiClient(
+  baseUrl: string,
+  options?: { getAccessToken?: AccessTokenProvider },
+) {
   const root = baseUrl.replace(/\/$/, "");
+  const getAccessToken = options?.getAccessToken;
 
   async function request<T>(path: string, init?: RequestInit): Promise<T> {
+    const headers = new Headers(init?.headers);
+    const token = getAccessToken ? await getAccessToken() : null;
+    if (token) headers.set("Authorization", `Bearer ${token}`);
+
     const timeout =
       init?.signal ??
       (typeof AbortSignal !== "undefined" && "timeout" in AbortSignal
@@ -57,18 +73,26 @@ export function createApiClient(baseUrl: string) {
         : undefined);
     let res: Response;
     try {
-      res = await fetch(`${root}${path}`, { ...init, signal: timeout });
+      res = await fetch(`${root}${path}`, { ...init, headers, signal: timeout });
     } catch (err) {
       throw explainNetworkError(err, root || "the analysis API");
     }
     if (!res.ok) {
       throw new Error(errorMessage(res.status, await res.text()));
     }
-    return res.json() as Promise<T>;
+    if (res.status === 204) return null as T;
+    const text = await res.text();
+    if (!text) return null as T;
+    return JSON.parse(text) as T;
   }
 
   return {
     health: () => request<HealthResponse>("/health"),
+    me: () => request<AuthUser>("/me"),
+    deleteAccount: async () => {
+      await request<null>("/me", { method: "DELETE" });
+    },
+    listListings: () => request<ListingSummary[]>("/listings"),
     createListing: (body: CreateListingRequest) =>
       request<Listing>("/listings", {
         method: "POST",

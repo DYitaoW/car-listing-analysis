@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { SiteFooter } from "@/components/SiteFooter";
 import { SiteHeader } from "@/components/SiteHeader";
 import { Checker } from "./Checker";
@@ -25,7 +26,9 @@ export default function CheckPage() {
             quality, claims, VIN alignment, and recalls.
           </p>
         </header>
-        <Checker />
+        <Suspense fallback={<p className="text-sm text-muted">Loading checker…</p>}>
+          <Checker />
+        </Suspense>
       </main>
       <SiteFooter />
     </div>

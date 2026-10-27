@@ -52,6 +52,7 @@ export interface ListingImage {
 
 export interface Listing {
   id: string;
+  userId?: string | null;
   title: string;
   price: number | null;
   description: string;
@@ -63,6 +64,22 @@ export interface Listing {
   report: AnalysisReport | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ListingSummary {
+  id: string;
+  title: string;
+  price: number | null;
+  status: ListingStatus;
+  riskScore: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AuthUser {
+  id: string;
+  email: string | null;
+  authRequired: boolean;
 }
 
 export interface CreateListingRequest {

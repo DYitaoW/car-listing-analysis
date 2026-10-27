@@ -33,7 +33,10 @@ class Settings(BaseSettings):
     supabase_url: str = ""
     supabase_service_role_key: str = ""
     supabase_anon_key: str = ""
+    supabase_jwt_secret: str = ""
     supabase_storage_bucket: str = "listing-images"
+    # When true (default) and Supabase Auth is configured, listing APIs require a signed-in user.
+    auth_required: bool = True
 
     local_upload_dir: str = "./data/uploads"
 
@@ -45,9 +48,19 @@ class Settings(BaseSettings):
 
     cors_origins: str = "http://127.0.0.1:43123,http://localhost:43123,http://127.0.0.1:3000,http://localhost:3000"
 
+    rate_limit_enabled: bool = True
+
     @property
     def supabase_configured(self) -> bool:
         return bool(self.supabase_url and self.supabase_service_role_key)
+
+    @property
+    def auth_configured(self) -> bool:
+        return bool(self.supabase_url and (self.supabase_jwt_secret or self.supabase_anon_key))
+
+    @property
+    def require_auth(self) -> bool:
+        return self.auth_configured and self.auth_required
 
     @property
     def upload_path(self) -> Path:

@@ -16,6 +16,8 @@ async function proxy(request: Request, context: { params: Promise<{ path: string
   if (contentType) headers.set("content-type", contentType);
   const accept = request.headers.get("accept");
   if (accept) headers.set("accept", accept);
+  const authorization = request.headers.get("authorization");
+  if (authorization) headers.set("authorization", authorization);
 
   const hasBody = request.method !== "GET" && request.method !== "HEAD";
   try {

@@ -26,11 +26,24 @@ if settings.database_url.startswith("sqlite"):
         cursor.close()
 
 
+def _ensure_sqlite_columns(connection) -> None:  # noqa: ANN001
+    """Add columns introduced after the first scaffold without a full migration tool."""
+    rows = connection.exec_driver_sql("PRAGMA table_info(listings)").fetchall()
+    existing = {row[1] for row in rows}
+    if "user_id" not in existing:
+        connection.exec_driver_sql("ALTER TABLE listings ADD COLUMN user_id VARCHAR(64)")
+        connection.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_listings_user_id ON listings (user_id)"
+        )
+
+
 async def init_db() -> None:
     from listing_validator_api import models  # noqa: F401
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        if settings.database_url.startswith("sqlite"):
+            await conn.run_sync(_ensure_sqlite_columns)
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
