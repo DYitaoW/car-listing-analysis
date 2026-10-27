@@ -1,4 +1,5 @@
 import { createApiClient } from "@listing-validator/api-client";
+import { getSupabase } from "@/lib/supabase";
 
 function resolveApiBase(): string {
   const configured = process.env.NEXT_PUBLIC_API_URL?.trim();
@@ -13,9 +14,6 @@ function resolveApiBase(): string {
       hostname === "[::1]" ||
       hostname === "0.0.0.0";
     const pageIsHttps = typeof window !== "undefined" && window.location.protocol === "https:";
-    // Loopback in the browser points at the viewer's machine. Firefox reports
-    // that failure as "NetworkError when attempting to fetch resource".
-    // The Next server proxies /api/lv to the API instead.
     if (loopback || (protocol === "http:" && pageIsHttps)) return "/api/lv";
   } catch {
     return "/api/lv";
@@ -24,4 +22,12 @@ function resolveApiBase(): string {
 }
 
 export const apiBaseUrl = resolveApiBase();
-export const api = createApiClient(apiBaseUrl);
+
+async function getAccessToken(): Promise<string | null> {
+  const supabase = getSupabase();
+  if (!supabase) return null;
+  const { data } = await supabase.auth.getSession();
+  return data.session?.access_token ?? null;
+}
+
+export const api = createApiClient(apiBaseUrl, { getAccessToken });

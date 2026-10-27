@@ -106,26 +106,40 @@ Point `EXPO_PUBLIC_API_URL`, or the API server field in the app, at your machine
 
 ## API surface (MVP)
 
+- `GET /me` — current user (requires Bearer token when auth is on)
+- `GET /listings` — listings owned by the signed-in user
 - `POST /listings` — create listing metadata
 - `POST /listings/{id}/images` — multipart upload; enqueues analysis
 - `GET /listings/{id}` — status + report
 - `POST /listings/{id}/analyze` — re-run analysis
 - `GET /health`
 
-## Supabase setup
+## Supabase setup (Storage + Auth + Google)
 
 1. Create a free Supabase project
-2. Storage → New bucket `listing-images`
-3. For local server uploads with the service role key, policies can stay locked down (service role bypasses RLS)
-4. Set in `.env` / process env:
+2. **Storage** → New bucket `listing-images` (service role uploads can keep RLS locked down)
+3. **Authentication → Providers**
+   - Enable **Email**
+   - Enable **Google**, paste your Google OAuth Client ID and Secret from Google Cloud Console
+4. **Authentication → URL configuration**
+   - Site URL: `http://127.0.0.1:43123`
+   - Redirect URLs: `http://127.0.0.1:43123/auth/callback` (and your production URL when you deploy)
+5. Copy keys into `.env`:
 
 ```
 SUPABASE_URL=https://YOUR_PROJECT.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=eyJ...
+SUPABASE_ANON_KEY=eyJ...
+SUPABASE_JWT_SECRET=your-jwt-secret
 SUPABASE_STORAGE_BUCKET=listing-images
+NEXT_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
+AUTH_REQUIRED=true
 ```
 
-Without these vars, images are written under `apps/api/data/uploads`.
+Without Supabase Auth vars, the site still works anonymously and images land under `apps/api/data/uploads`.
+
+With Auth configured, `/check` requires sign-in and listings are saved under **My listings**.
 
 ## Optional Docker services
 

@@ -75,6 +75,7 @@ async def test_health_and_local_cors(client):
         "storage": "local",
         "llmProvider": "stub",
         "jobBackend": "inprocess",
+        "auth": "disabled",
     }
 
     preflight = await client.options(

@@ -50,11 +50,18 @@ def create_app() -> FastAPI:
 
     @app.get("/health", response_model=HealthOut)
     async def health() -> HealthOut:
+        if settings.require_auth:
+            auth_mode = "required"
+        elif settings.auth_configured:
+            auth_mode = "optional"
+        else:
+            auth_mode = "disabled"
         return HealthOut(
             status="ok",
             storage="supabase" if settings.supabase_configured else "local",
             llm_provider=settings.llm_provider,
             job_backend=settings.job_backend,
+            auth=auth_mode,
         )
 
     return app

@@ -15,6 +15,7 @@ class Listing(Base):
     __tablename__ = "listings"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    user_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     title: Mapped[str] = mapped_column(String(512))
     description: Mapped[str] = mapped_column(Text)
     price: Mapped[float | None] = mapped_column(Float, nullable=True)

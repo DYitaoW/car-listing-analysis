@@ -7,14 +7,22 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from listing_validator_api.auth import AuthUser, RequireUser
 from listing_validator_api.config import get_settings
 from listing_validator_api.db import get_session
 from listing_validator_api.jobs import enqueue_redis, run_analysis_job
 from listing_validator_api.models import Listing, ListingImage
-from listing_validator_api.schemas import AnalysisReport, ListingCreate, ListingImageOut, ListingOut
+from listing_validator_api.schemas import (
+    AnalysisReport,
+    ListingCreate,
+    ListingImageOut,
+    ListingOut,
+    ListingSummaryOut,
+    MeOut,
+)
 from listing_validator_api.storage import get_storage
 
-router = APIRouter(prefix="/listings", tags=["listings"])
+router = APIRouter(tags=["listings"])
 _MAX_IMAGE_BYTES = 15 * 1024 * 1024
 
 
@@ -31,6 +39,7 @@ def _to_out(listing: Listing) -> ListingOut:
         report = AnalysisReport.model_validate(json.loads(listing.report_json))
     return ListingOut(
         id=listing.id,
+        user_id=listing.user_id,
         title=listing.title,
         price=listing.price,
         description=listing.description,
@@ -48,12 +57,73 @@ def _to_out(listing: Listing) -> ListingOut:
     )
 
 
-@router.post("", response_model=ListingOut, status_code=201)
+def _to_summary(listing: Listing) -> ListingSummaryOut:
+    risk_score = None
+    if listing.report_json:
+        try:
+            risk_score = AnalysisReport.model_validate(json.loads(listing.report_json)).risk_score
+        except Exception:
+            risk_score = None
+    return ListingSummaryOut(
+        id=listing.id,
+        title=listing.title,
+        price=listing.price,
+        status=listing.status,  # type: ignore[arg-type]
+        risk_score=risk_score,
+        created_at=listing.created_at,
+        updated_at=listing.updated_at,
+    )
+
+
+async def _owned_listing(
+    session: AsyncSession,
+    listing_id: str,
+    user: AuthUser | None,
+) -> Listing:
+    result = await session.execute(
+        select(Listing).where(Listing.id == listing_id).options(selectinload(Listing.images))
+    )
+    listing = result.scalar_one_or_none()
+    if listing is None:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    if user is None:
+        return listing
+    if listing.user_id != user.id:
+        # Hide both other users' listings and legacy anonymous rows from signed-in users.
+        raise HTTPException(status_code=404, detail="Listing not found")
+    return listing
+
+
+@router.get("/me", response_model=MeOut)
+async def me(user: RequireUser) -> MeOut:
+    settings = get_settings()
+    if user is None:
+        return MeOut(id="anonymous", email=None, auth_required=settings.require_auth)
+    return MeOut(id=user.id, email=user.email, auth_required=settings.require_auth)
+
+
+@router.get("/listings", response_model=list[ListingSummaryOut])
+async def list_listings(
+    user: RequireUser,
+    session: AsyncSession = Depends(get_session),
+) -> list[ListingSummaryOut]:
+    query = select(Listing).order_by(Listing.created_at.desc())
+    if user is not None:
+        query = query.where(Listing.user_id == user.id)
+    elif get_settings().require_auth:
+        raise HTTPException(status_code=401, detail="Sign in required")
+    result = await session.execute(query.limit(100))
+    return [_to_summary(item) for item in result.scalars().all()]
+
+
+@router.post("/listings", response_model=ListingOut, status_code=201)
 async def create_listing(
     payload: ListingCreate,
+    user: RequireUser,
     session: AsyncSession = Depends(get_session),
 ) -> ListingOut:
     listing = Listing(
+        user_id=user.id if user else None,
         title=payload.title.strip(),
         description=payload.description.strip(),
         price=payload.price,
@@ -69,19 +139,15 @@ async def create_listing(
     return _to_out(listing)
 
 
-@router.post("/{listing_id}/images", response_model=ListingOut)
+@router.post("/listings/{listing_id}/images", response_model=ListingOut)
 async def upload_images(
     listing_id: str,
     background: BackgroundTasks,
+    user: RequireUser,
     files: list[UploadFile] = File(...),
     session: AsyncSession = Depends(get_session),
 ) -> ListingOut:
-    result = await session.execute(
-        select(Listing).where(Listing.id == listing_id).options(selectinload(Listing.images))
-    )
-    listing = result.scalar_one_or_none()
-    if listing is None:
-        raise HTTPException(status_code=404, detail="Listing not found")
+    listing = await _owned_listing(session, listing_id, user)
     if not files:
         raise HTTPException(status_code=400, detail="At least one image is required")
 
@@ -111,39 +177,28 @@ async def upload_images(
     listing.status = "pending"
     listing.error = None
     await session.commit()
-    result = await session.execute(
-        select(Listing).where(Listing.id == listing_id).options(selectinload(Listing.images))
-    )
-    listing = result.scalar_one()
+    listing = await _owned_listing(session, listing_id, user)
     _schedule(background, listing.id)
     return _to_out(listing)
 
 
-@router.post("/{listing_id}/analyze", response_model=ListingOut)
+@router.post("/listings/{listing_id}/analyze", response_model=ListingOut)
 async def trigger_analyze(
     listing_id: str,
     background: BackgroundTasks,
+    user: RequireUser,
     session: AsyncSession = Depends(get_session),
 ) -> ListingOut:
-    result = await session.execute(
-        select(Listing).where(Listing.id == listing_id).options(selectinload(Listing.images))
-    )
-    listing = result.scalar_one_or_none()
-    if listing is None:
-        raise HTTPException(status_code=404, detail="Listing not found")
+    listing = await _owned_listing(session, listing_id, user)
     _schedule(background, listing.id)
     return _to_out(listing)
 
 
-@router.get("/{listing_id}", response_model=ListingOut)
+@router.get("/listings/{listing_id}", response_model=ListingOut)
 async def get_listing(
     listing_id: str,
+    user: RequireUser,
     session: AsyncSession = Depends(get_session),
 ) -> ListingOut:
-    result = await session.execute(
-        select(Listing).where(Listing.id == listing_id).options(selectinload(Listing.images))
-    )
-    listing = result.scalar_one_or_none()
-    if listing is None:
-        raise HTTPException(status_code=404, detail="Listing not found")
+    listing = await _owned_listing(session, listing_id, user)
     return _to_out(listing)

@@ -1,10 +1,16 @@
 "use client";
 
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import type { Listing } from "@listing-validator/types";
+import { useAuth } from "@/components/AuthProvider";
 import { api, apiBaseUrl } from "@/lib/api";
 
 export function Checker() {
+  const params = useSearchParams();
+  const existingId = params.get("id");
+  const { configured, loading: authLoading, user } = useAuth();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [price, setPrice] = useState("");
@@ -16,6 +22,7 @@ export function Checker() {
   const [submitting, setSubmitting] = useState(false);
   const [storageMode, setStorageMode] = useState<string>("…");
   const [visionMode, setVisionMode] = useState<string>("…");
+  const [authMode, setAuthMode] = useState<string>("…");
   const [apiError, setApiError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -24,14 +31,33 @@ export function Checker() {
       .then((h) => {
         setStorageMode(h.storage);
         setVisionMode(h.llmProvider);
+        setAuthMode(h.auth);
         setApiError(null);
       })
       .catch((err: unknown) => {
         setStorageMode("unreachable");
         setVisionMode("unknown");
+        setAuthMode("unknown");
         setApiError(err instanceof Error ? err.message : "Cannot reach the analysis API.");
       });
   }, []);
+
+  useEffect(() => {
+    if (!existingId || authLoading) return;
+    if (configured && !user) return;
+    let cancelled = false;
+    api
+      .getListing(existingId)
+      .then((row) => {
+        if (!cancelled) setListing(row);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : "Could not load listing");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [authLoading, configured, existingId, user]);
 
   const listingId = listing?.id;
   const listingStatus = listing?.status;
@@ -90,6 +116,23 @@ export function Checker() {
     }
   }
 
+  const needsSignIn = configured && !authLoading && !user && authMode === "required";
+
+  if (needsSignIn) {
+    return (
+      <div className="border border-panel-border bg-panel p-6 md:p-8">
+        <h2 className="font-display text-2xl text-ink">Sign in to check a listing</h2>
+        <p className="mt-2 max-w-lg text-sm text-muted">
+          When Supabase Auth is enabled, listing checks are saved to your account so you can reopen
+          them later.
+        </p>
+        <Link href="/login?next=/check" className="btn-primary mt-5 inline-flex">
+          Sign in
+        </Link>
+      </div>
+    );
+  }
+
   return (
     <div className="grid gap-8 lg:grid-cols-2 lg:gap-10">
       <form
@@ -99,10 +142,16 @@ export function Checker() {
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--line)] pb-4">
           <p className="text-sm font-semibold text-ink">Listing details</p>
           <p className="font-mono text-[11px] tracking-wide text-muted uppercase">
-            {storageMode} · {visionMode} · {apiBaseUrl}
+            {storageMode} · {visionMode} · {authMode} · {apiBaseUrl}
           </p>
         </div>
         {apiError ? <p className="text-sm text-danger">{apiError}</p> : null}
+        {configured && user ? (
+          <p className="text-xs text-muted">
+            Signed in as <span className="text-ink">{user.email ?? user.id}</span> — this check will be
+            saved to your account.
+          </p>
+        ) : null}
 
         <Field label="Listing title">
           <input

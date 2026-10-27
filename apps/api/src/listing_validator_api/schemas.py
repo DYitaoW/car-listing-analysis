@@ -83,6 +83,7 @@ class ListingCreate(CamelModel):
 
 class ListingOut(CamelModel):
     id: str
+    user_id: str | None = None
     title: str
     price: float | None
     description: str
@@ -96,8 +97,25 @@ class ListingOut(CamelModel):
     updated_at: datetime
 
 
+class ListingSummaryOut(CamelModel):
+    id: str
+    title: str
+    price: float | None
+    status: ListingStatus
+    risk_score: int | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class MeOut(CamelModel):
+    id: str
+    email: str | None = None
+    auth_required: bool
+
+
 class HealthOut(CamelModel):
     status: str
     storage: Literal["supabase", "local"]
     llm_provider: str
     job_backend: str
+    auth: Literal["required", "optional", "disabled"]
