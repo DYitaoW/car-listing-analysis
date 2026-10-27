@@ -143,6 +143,8 @@ With Auth configured, `/check` requires sign-in and listings are saved under **M
 
 The homepage includes a **demo listing** (`/#demo`, or `/check?demo=1`). Write endpoints are rate-limited per IP/user (`RATE_LIMIT_ENABLED=true`).
 
+`/check` can import a public **Facebook Marketplace** URL via `POST /import/marketplace` (title, price, description, VIN, photo URLs). Facebook login walls may return partial data — users can always paste details manually.
+
 ## Optional Docker services
 
 ```bash

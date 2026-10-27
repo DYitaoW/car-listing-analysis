@@ -81,6 +81,25 @@ class ListingCreate(CamelModel):
     source_url: HttpUrl | None = None
 
 
+class MarketplaceImportRequest(CamelModel):
+    url: str = Field(min_length=8, max_length=2048)
+
+
+class MarketplaceImportOut(CamelModel):
+    source_url: str
+    title: str
+    description: str
+    price: float | None = None
+    vin: str | None = None
+    image_urls: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    partial: bool = False
+
+
+class ImageUrlsIn(CamelModel):
+    urls: list[str] = Field(default_factory=list, max_length=12)
+
+
 class ListingOut(CamelModel):
     id: str
     user_id: str | None = None
