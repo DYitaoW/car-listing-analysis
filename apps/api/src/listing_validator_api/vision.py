@@ -11,7 +11,7 @@ import httpx
 from PIL import Image, ImageStat
 
 from listing_validator_api.config import Settings
-from listing_validator_api.schemas import ClaimCheck, RiskFlag
+from listing_validator_api.schemas import AttributeCheck, ClaimCheck, RiskFlag, VinDecoded
 
 VLM_IMAGE_LIMIT = 4
 _MAX_SIDE = 1280
@@ -40,6 +40,7 @@ class VlmAssessment:
     summary: str
     flags: list[RiskFlag]
     claim_checks: list[ClaimCheck]
+    attribute_checks: list[AttributeCheck]
     observed_make: str | None
     observed_model: str | None
     observed_color: str | None
@@ -238,10 +239,13 @@ def parse_vlm_payload(raw: str) -> VlmAssessment:
         adjustment_int = int(adjustment)
     except (TypeError, ValueError):
         adjustment_int = 0
+    attrs = [_attribute(item) for item in data.get("attribute_checks") or []]
+    attrs = [item for item in attrs if item is not None]
     return VlmAssessment(
         summary=str(data.get("summary") or "").strip(),
         flags=flags,
         claim_checks=checks,
+        attribute_checks=attrs,
         observed_make=_optional_str(data.get("observed_make")),
         observed_model=_optional_str(data.get("observed_model")),
         observed_color=_optional_str(data.get("observed_color")),
@@ -260,6 +264,9 @@ async def analyze_with_vlm(
     claims: list[str],
     images: list[ImagePayload],
     settings: Settings,
+    vin_decoded: VinDecoded | None = None,
+    listing_color: str | None = None,
+    attribute_checks: list[AttributeCheck] | None = None,
 ) -> VlmAssessment | None:
     prepared: list[tuple[bytes, str]] = []
     for image in images:
@@ -279,6 +286,9 @@ async def analyze_with_vlm(
         claims=claims,
         shown=len(prepared),
         total=len(images),
+        vin_decoded=vin_decoded,
+        listing_color=listing_color,
+        attribute_checks=attribute_checks or [],
     )
     if provider == "gemini":
         raw = await _gemini(prompt, prepared, settings)
@@ -289,9 +299,48 @@ async def analyze_with_vlm(
     return parse_vlm_payload(raw)
 
 
-def _prompt(*, title: str, description: str, price: float | None, claims: list[str], shown: int, total: int) -> str:
+def _prompt(
+    *,
+    title: str,
+    description: str,
+    price: float | None,
+    claims: list[str],
+    shown: int,
+    total: int,
+    vin_decoded: VinDecoded | None,
+    listing_color: str | None,
+    attribute_checks: list[AttributeCheck],
+) -> str:
     claim_text = ", ".join(claims) if claims else "none extracted"
     price_text = "unknown" if price is None else str(price)
+    vin_lines: list[str] = []
+    if vin_decoded:
+        for label, value in (
+            ("year", vin_decoded.model_year),
+            ("make", vin_decoded.make),
+            ("model", vin_decoded.model),
+            ("trim", vin_decoded.trim),
+            ("series", vin_decoded.series),
+            ("body", vin_decoded.body_class),
+            ("drive", vin_decoded.drive_type),
+            ("doors", vin_decoded.doors),
+            ("fuel", vin_decoded.fuel_type),
+            ("engine_l", vin_decoded.displacement_l),
+            ("cylinders", vin_decoded.engine_cylinders),
+            ("hp", vin_decoded.engine_hp),
+            ("transmission", vin_decoded.transmission),
+        ):
+            if value:
+                vin_lines.append(f"- {label}: {value}")
+    vin_block = "\n".join(vin_lines) if vin_lines else "- (no VIN decode available)"
+    focus = []
+    for check in attribute_checks:
+        if check.attribute in {"trim", "color", "body_class", "make", "model"} and check.expected:
+            focus.append(f"- {check.attribute}: expected {check.expected} (from {check.source})")
+    if listing_color and not any(c.attribute == "color" for c in attribute_checks):
+        focus.append(f"- color: expected {listing_color} (from listing)")
+    focus_block = "\n".join(focus) if focus else "- none beyond general consistency"
+
     return f"""You assess risk signals in a user-submitted vehicle listing. You do not verify title, ownership, or vehicle history.
 
 Listing title: {title}
@@ -300,6 +349,13 @@ Description:
 {description}
 
 Text claims to judge against the photos: {claim_text}
+
+NHTSA VIN decode (factory attributes — paint color is NEVER in the VIN):
+{vin_block}
+
+Attributes that need photo evidence when possible:
+{focus_block}
+
 You are seeing {shown} of {total} uploaded photos.
 
 Return ONLY JSON with this shape:
@@ -312,12 +368,16 @@ Return ONLY JSON with this shape:
   "observed_color": null,
   "risk_adjustment": 0,
   "flags": [{{"code": "snake_case", "severity": "low|medium|high", "message": "what is wrong"}}],
-  "claim_checks": [{{"claim": "text", "verdict": "supported|contradicted|unclear", "detail": "what the photos show"}}]
+  "claim_checks": [{{"claim": "text", "verdict": "supported|contradicted|unclear", "detail": "what the photos show"}}],
+  "attribute_checks": [{{"attribute": "trim|color|body_class|make|model", "expected": "value", "source": "vin|listing", "listing_match": null, "photo_evidence": "supported|contradicted|unclear|not_applicable", "detail": "what the photos show"}}]
 }}
 
 Rules:
 - Set photo_text_consistent to false only when the photos clearly disagree with the title or description.
-- Use verdict "supported" only when the photos actually show the claim. Otherwise use "unclear" or "contradicted".
+- Use claim verdict "supported" only when the photos actually show the claim. Otherwise use "unclear" or "contradicted".
+- For trim: look for trim badges, wheels, lighting, or equipment that support or contradict the VIN/listing trim. If nothing is readable, use photo_evidence "unclear".
+- For color: compare the exterior paint in the photos to the expected listing color. VIN has no color — never invent a VIN color.
+- For body_class/make/model: only mark contradicted when photos clearly show a different class/brand/model.
 - risk_adjustment is an integer from 0 to 30.
 - Do not say the vehicle is verified, authentic, or title-clean.
 """
@@ -436,3 +496,28 @@ def _claim(item: object) -> ClaimCheck | None:
     if not claim or not detail:
         return None
     return ClaimCheck(claim=claim, verdict=verdict, detail=detail)  # type: ignore[arg-type]
+
+
+def _attribute(item: object) -> AttributeCheck | None:
+    if not isinstance(item, dict):
+        return None
+    attribute = re.sub(r"[^a-z0-9_]+", "_", str(item.get("attribute") or "").lower()).strip("_")
+    detail = str(item.get("detail") or "").strip()
+    if not attribute or not detail:
+        return None
+    evidence = str(item.get("photo_evidence") or "unclear").lower()
+    if evidence not in {"supported", "contradicted", "unclear", "not_applicable"}:
+        evidence = "unclear"
+    source = str(item.get("source") or "listing").lower()
+    if source not in {"vin", "listing"}:
+        source = "listing"
+    listing_match = _optional_bool(item.get("listing_match"))
+    expected = _optional_str(item.get("expected"))
+    return AttributeCheck(
+        attribute=attribute[:48],
+        expected=expected,
+        source=source,  # type: ignore[arg-type]
+        listing_match=listing_match,
+        photo_evidence=evidence,  # type: ignore[arg-type]
+        detail=detail,
+    )

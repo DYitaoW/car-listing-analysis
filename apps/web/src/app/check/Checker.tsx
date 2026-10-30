@@ -276,23 +276,85 @@ export function Checker() {
                   ) : null}
                 </div>
                 {listing.report.vinMatch.checked ? (
-                  <p className="text-sm text-ink">
-                    VIN{" "}
-                    {listing.report.vinMatch.matchesListing
-                      ? "agrees with the listing text"
-                      : listing.report.vinMatch.matchesListing === false
-                        ? "conflicts with the listing text"
-                        : "was decoded"}
-                    {listing.report.vinMatch.decoded
-                      ? ` · ${[
-                          listing.report.vinMatch.decoded.modelYear,
-                          listing.report.vinMatch.decoded.make,
-                          listing.report.vinMatch.decoded.model,
-                        ]
-                          .filter(Boolean)
-                          .join(" ")}`
-                      : ""}
-                  </p>
+                  <div className="space-y-2 border-t border-[var(--line)] pt-4">
+                    <p className="text-sm text-ink">
+                      VIN{" "}
+                      {listing.report.vinMatch.matchesListing
+                        ? "agrees with the listing text"
+                        : listing.report.vinMatch.matchesListing === false
+                          ? "conflicts with the listing text"
+                          : "was decoded"}
+                      {listing.report.vinMatch.decoded
+                        ? ` · ${[
+                            listing.report.vinMatch.decoded.modelYear,
+                            listing.report.vinMatch.decoded.make,
+                            listing.report.vinMatch.decoded.model,
+                            listing.report.vinMatch.decoded.trim,
+                          ]
+                            .filter(Boolean)
+                            .join(" ")}`
+                        : ""}
+                    </p>
+                    {listing.report.vinMatch.decoded ? (
+                      <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-muted sm:grid-cols-3">
+                        {(
+                          [
+                            ["Body", listing.report.vinMatch.decoded.bodyClass],
+                            ["Drive", listing.report.vinMatch.decoded.driveType],
+                            ["Doors", listing.report.vinMatch.decoded.doors],
+                            ["Fuel", listing.report.vinMatch.decoded.fuelType],
+                            ["Engine", listing.report.vinMatch.decoded.displacementL
+                              ? `${listing.report.vinMatch.decoded.displacementL}L`
+                              : null],
+                            ["Trans", listing.report.vinMatch.decoded.transmission],
+                          ] as const
+                        )
+                          .filter(([, value]) => Boolean(value))
+                          .map(([label, value]) => (
+                            <div key={label}>
+                              <dt className="font-mono uppercase tracking-wide">{label}</dt>
+                              <dd className="text-ink">{value}</dd>
+                            </div>
+                          ))}
+                      </dl>
+                    ) : null}
+                    <p className="text-xs text-muted">
+                      Paint color is not in the VIN — color checks come from listing text vs photos.
+                    </p>
+                  </div>
+                ) : null}
+                {listing.report.attributeChecks?.length ? (
+                  <ul className="space-y-2">
+                    <p className="font-mono text-xs tracking-wider text-muted uppercase">
+                      VIN / photo attribute checks
+                    </p>
+                    {listing.report.attributeChecks.map((check) => (
+                      <li
+                        key={`${check.attribute}-${check.expected ?? "none"}`}
+                        className="border border-panel-border px-3 py-2.5 text-sm"
+                      >
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-mono text-xs uppercase text-accent">{check.attribute}</span>
+                          <span className="font-mono text-xs uppercase text-muted">
+                            text:{" "}
+                            {check.listingMatch === true
+                              ? "match"
+                              : check.listingMatch === false
+                                ? "conflict"
+                                : "n/a"}
+                          </span>
+                          <span className="font-mono text-xs uppercase text-warn">
+                            photos: {check.photoEvidence}
+                          </span>
+                        </div>
+                        <p className="text-ink">
+                          Expected: {check.expected ?? "—"}{" "}
+                          <span className="text-muted">({check.source})</span>
+                        </p>
+                        <p className="text-muted">{check.detail}</p>
+                      </li>
+                    ))}
+                  </ul>
                 ) : null}
                 {listing.report.imageFindings?.length ? (
                   <ul className="space-y-1 border-t border-[var(--line)] pt-4">

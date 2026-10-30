@@ -35,12 +35,42 @@ class VinDecoded(CamelModel):
     model: str | None = None
     model_year: str | None = None
     body_class: str | None = None
+    trim: str | None = None
+    series: str | None = None
+    drive_type: str | None = None
+    doors: str | None = None
+    fuel_type: str | None = None
+    displacement_l: str | None = None
+    engine_cylinders: str | None = None
+    engine_hp: str | None = None
+    transmission: str | None = None
+    plant_city: str | None = None
+    plant_state: str | None = None
+    plant_country: str | None = None
+    vehicle_type: str | None = None
+    error_text: str | None = None
+
+
+PhotoEvidence = Literal["supported", "contradicted", "unclear", "not_applicable"]
+AttributeSource = Literal["vin", "listing"]
+
+
+class AttributeCheck(CamelModel):
+    """Cross-check a VIN- or listing-derived attribute against text and/or photos."""
+
+    attribute: str
+    expected: str | None = None
+    source: AttributeSource
+    listing_match: bool | None = None
+    photo_evidence: PhotoEvidence = "unclear"
+    detail: str
 
 
 class VinMatch(CamelModel):
     checked: bool
     matches_listing: bool | None = None
     decoded: VinDecoded | None = None
+    attribute_checks: list[AttributeCheck] = Field(default_factory=list)
 
 
 class RecallsInfo(CamelModel):
@@ -56,6 +86,7 @@ class AnalysisReport(CamelModel):
     summary: str
     flags: list[RiskFlag]
     claim_checks: list[ClaimCheck]
+    attribute_checks: list[AttributeCheck] = Field(default_factory=list)
     vin_match: VinMatch
     recalls: RecallsInfo
     image_findings: list[str] = Field(default_factory=list)

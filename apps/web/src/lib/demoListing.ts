@@ -57,6 +57,24 @@ export const DEMO_LISTING: Listing = {
         detail: "Demo mode records the claim. A live check can compare it with the photos.",
       },
     ],
+    attributeChecks: [
+      {
+        attribute: "trim",
+        expected: "EX",
+        source: "vin",
+        listingMatch: true,
+        photoEvidence: "unclear",
+        detail: "VIN trim is EX. Photos would be checked for EX badging when a vision model is enabled.",
+      },
+      {
+        attribute: "color",
+        expected: null,
+        source: "listing",
+        listingMatch: null,
+        photoEvidence: "unclear",
+        detail: "No exterior color named in the demo listing text. Paint color is never in the VIN.",
+      },
+    ],
     vinMatch: {
       checked: true,
       matchesListing: true,
@@ -65,7 +83,12 @@ export const DEMO_LISTING: Listing = {
         model: "Accord",
         modelYear: "2016",
         bodyClass: "Coupe",
+        trim: "EX",
+        driveType: "4x2",
+        doors: "2",
+        fuelType: "Gasoline",
       },
+      attributeChecks: [],
     },
     recalls: {
       checked: true,

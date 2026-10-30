@@ -10,6 +10,15 @@ RECALLS_URL = "https://api.nhtsa.gov/recalls/recallsByVehicle"
 _HEADERS = {"User-Agent": "SignalCheck/0.1 (vehicle listing risk signals)", "Accept": "application/json"}
 
 
+def _clean(value: object) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text or text.lower() in {"not applicable", "null", "none", "0"}:
+        return None
+    return text
+
+
 async def decode_vin(vin: str) -> VinDecoded | None:
     vin = vin.strip().upper()
     if len(vin) < 11:
@@ -22,10 +31,24 @@ async def decode_vin(vin: str) -> VinDecoded | None:
             return None
         row = results[0]
         return VinDecoded(
-            make=row.get("Make") or None,
-            model=row.get("Model") or None,
-            model_year=row.get("ModelYear") or None,
-            body_class=row.get("BodyClass") or None,
+            make=_clean(row.get("Make")),
+            model=_clean(row.get("Model")),
+            model_year=_clean(row.get("ModelYear")),
+            body_class=_clean(row.get("BodyClass")),
+            trim=_clean(row.get("Trim")),
+            series=_clean(row.get("Series")),
+            drive_type=_clean(row.get("DriveType")),
+            doors=_clean(row.get("Doors")),
+            fuel_type=_clean(row.get("FuelTypePrimary")),
+            displacement_l=_clean(row.get("DisplacementL")),
+            engine_cylinders=_clean(row.get("EngineCylinders")),
+            engine_hp=_clean(row.get("EngineHP")),
+            transmission=_clean(row.get("TransmissionStyle")),
+            plant_city=_clean(row.get("PlantCity")),
+            plant_state=_clean(row.get("PlantState")),
+            plant_country=_clean(row.get("PlantCountry")),
+            vehicle_type=_clean(row.get("VehicleType")),
+            error_text=_clean(row.get("ErrorText")),
         )
 
 

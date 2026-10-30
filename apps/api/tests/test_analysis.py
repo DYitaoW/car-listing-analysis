@@ -5,7 +5,7 @@ from PIL import Image
 
 from listing_validator_api.analysis import analyze_listing
 from listing_validator_api.config import get_settings
-from listing_validator_api.schemas import ClaimCheck, RecallsInfo, RiskFlag, VinDecoded
+from listing_validator_api.schemas import AttributeCheck, ClaimCheck, RecallsInfo, RiskFlag, VinDecoded
 from listing_validator_api.vision import (
     ImagePayload,
     VlmAssessment,
@@ -139,6 +139,16 @@ async def test_vlm_results_merge_into_the_report(monkeypatch):
             claim_checks=[
                 ClaimCheck(claim="no rust", verdict="supported", detail="No rust is visible on the panels shown."),
             ],
+            attribute_checks=[
+                AttributeCheck(
+                    attribute="color",
+                    expected="silver",
+                    source="listing",
+                    listing_match=True,
+                    photo_evidence="supported",
+                    detail="Exterior paint looks silver in the photos.",
+                )
+            ],
             observed_make="Honda",
             observed_model="Civic",
             observed_color="silver",
@@ -206,3 +216,66 @@ def test_unreadable_upload_is_flagged():
     inspection = inspect_images([ImagePayload(b"not-an-image", "image/jpeg", "notes.txt")])
     assert inspection.readable_count == 0
     assert inspection.flags[0].code == "unreadable_image"
+
+
+@pytest.mark.asyncio
+async def test_vin_trim_mismatch_against_listing_text(monkeypatch):
+    async def fake_decode(_vin: str) -> VinDecoded:
+        return VinDecoded(
+            make="Honda",
+            model="Accord",
+            model_year="2018",
+            body_class="Sedan/Saloon",
+            trim="Sport",
+            drive_type="4x2",
+            doors="4",
+            fuel_type="Gasoline",
+        )
+
+    async def fake_recalls(_make: str, _model: str, _year: str) -> RecallsInfo:
+        return RecallsInfo(checked=True, count=0)
+
+    monkeypatch.setattr("listing_validator_api.analysis.decode_vin", fake_decode)
+    monkeypatch.setattr("listing_validator_api.analysis.fetch_recalls", fake_recalls)
+    photo = _payload(_png((640, 480), _noise))
+    report = await analyze_listing(
+        title="2018 Honda Accord LX — silver",
+        description="Clean LX sedan, silver exterior, garage kept.",
+        price=16000,
+        vin="1HGCV1F3XJA000001",
+        images=[photo, photo, photo],
+    )
+    assert any(flag.code == "vin_trim_mismatch" for flag in report.flags)
+    trim = next(c for c in report.attribute_checks if c.attribute == "trim")
+    assert trim.expected == "Sport"
+    assert trim.listing_match is False
+    color = next(c for c in report.attribute_checks if c.attribute == "color")
+    assert color.expected == "silver"
+    assert color.source == "listing"
+    assert report.vin_match.decoded is not None
+    assert report.vin_match.decoded.trim == "Sport"
+
+
+@pytest.mark.asyncio
+async def test_vin_trim_matches_listing_and_awaits_photo_proof(monkeypatch):
+    async def fake_decode(_vin: str) -> VinDecoded:
+        return VinDecoded(make="Honda", model="Accord", model_year="2018", trim="Sport")
+
+    async def fake_recalls(_make: str, _model: str, _year: str) -> RecallsInfo:
+        return RecallsInfo(checked=True, count=0)
+
+    monkeypatch.setattr("listing_validator_api.analysis.decode_vin", fake_decode)
+    monkeypatch.setattr("listing_validator_api.analysis.fetch_recalls", fake_recalls)
+    photo = _payload(_png((640, 480), _noise))
+    report = await analyze_listing(
+        title="2018 Honda Accord Sport",
+        description="Black Sport trim.",
+        price=17000,
+        vin="1HGCV1F3XJA000001",
+        images=[photo, photo, photo],
+    )
+    trim = next(c for c in report.attribute_checks if c.attribute == "trim")
+    assert trim.listing_match is True
+    assert trim.photo_evidence == "unclear"
+    assert "LLM_PROVIDER" in trim.detail
+    assert all(flag.code != "vin_trim_mismatch" for flag in report.flags)
