@@ -5,7 +5,32 @@ from PIL import Image
 
 from listing_validator_api.analysis import analyze_listing
 from listing_validator_api.config import get_settings
-from listing_validator_api.schemas import AttributeCheck, ClaimCheck, RecallsInfo, RiskFlag, VinDecoded
+from listing_validator_api.schemas import (
+    AttributeCheck,
+    ClaimCheck,
+    ComplaintComponent,
+    ModelIssuesInfo,
+    RecallsInfo,
+    RiskFlag,
+    VinDecoded,
+)
+
+
+def _stub_issues(**overrides) -> ModelIssuesInfo:
+    base = ModelIssuesInfo(
+        checked=True,
+        complaint_count=12,
+        crash_count=1,
+        fire_count=0,
+        injury_count=0,
+        death_count=0,
+        top_components=[],
+    )
+    return base.model_copy(update=overrides)
+
+
+async def _fake_issues(**overrides) -> ModelIssuesInfo:
+    return _stub_issues(**overrides)
 from listing_validator_api.vision import (
     ImagePayload,
     VlmAssessment,
@@ -79,6 +104,7 @@ async def test_vin_word_boundary_and_model_conflict(monkeypatch):
 
     monkeypatch.setattr("listing_validator_api.analysis.decode_vin", fake_decode)
     monkeypatch.setattr("listing_validator_api.analysis.fetch_recalls", fake_recalls)
+    monkeypatch.setattr("listing_validator_api.analysis.fetch_model_issues", _fake_issues)
 
     photo = _payload(_png((640, 480), _noise), "truck.png")
     affordable = await analyze_listing(
@@ -116,6 +142,7 @@ async def test_model_only_title_still_matches_vin(monkeypatch):
 
     monkeypatch.setattr("listing_validator_api.analysis.decode_vin", fake_decode)
     monkeypatch.setattr("listing_validator_api.analysis.fetch_recalls", fake_recalls)
+    monkeypatch.setattr("listing_validator_api.analysis.fetch_model_issues", _fake_issues)
     photo = _payload(_png((640, 480), _noise))
     report = await analyze_listing(
         title="2018 Civic LX",
@@ -235,8 +262,16 @@ async def test_vin_trim_mismatch_against_listing_text(monkeypatch):
     async def fake_recalls(_make: str, _model: str, _year: str) -> RecallsInfo:
         return RecallsInfo(checked=True, count=0)
 
+    async def fake_issues(*_a, **_k) -> ModelIssuesInfo:
+        return _stub_issues(
+            complaint_count=100,
+            crash_count=12,
+            top_components=[ComplaintComponent(component="Engine", count=40)],
+        )
+
     monkeypatch.setattr("listing_validator_api.analysis.decode_vin", fake_decode)
     monkeypatch.setattr("listing_validator_api.analysis.fetch_recalls", fake_recalls)
+    monkeypatch.setattr("listing_validator_api.analysis.fetch_model_issues", fake_issues)
     photo = _payload(_png((640, 480), _noise))
     report = await analyze_listing(
         title="2018 Honda Accord LX — silver",
@@ -254,6 +289,9 @@ async def test_vin_trim_mismatch_against_listing_text(monkeypatch):
     assert color.source == "listing"
     assert report.vin_match.decoded is not None
     assert report.vin_match.decoded.trim == "Sport"
+    assert report.model_issues.checked is True
+    assert any(flag.code == "complaint_crash_or_fire_cluster" for flag in report.flags)
+    assert any(flag.code == "complaint_component_hotspot" for flag in report.flags)
 
 
 @pytest.mark.asyncio
@@ -266,6 +304,7 @@ async def test_vin_trim_matches_listing_and_awaits_photo_proof(monkeypatch):
 
     monkeypatch.setattr("listing_validator_api.analysis.decode_vin", fake_decode)
     monkeypatch.setattr("listing_validator_api.analysis.fetch_recalls", fake_recalls)
+    monkeypatch.setattr("listing_validator_api.analysis.fetch_model_issues", _fake_issues)
     photo = _payload(_png((640, 480), _noise))
     report = await analyze_listing(
         title="2018 Honda Accord Sport",

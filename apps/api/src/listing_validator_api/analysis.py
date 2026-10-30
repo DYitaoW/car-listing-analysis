@@ -4,11 +4,12 @@ import asyncio
 import re
 
 from listing_validator_api.config import get_settings
-from listing_validator_api.nhtsa import decode_vin, fetch_recalls
+from listing_validator_api.nhtsa import decode_vin, fetch_model_issues, fetch_recalls
 from listing_validator_api.schemas import (
     AnalysisReport,
     AttributeCheck,
     ClaimCheck,
+    ModelIssuesInfo,
     RecallsInfo,
     RiskFlag,
     VinDecoded,
@@ -166,7 +167,7 @@ async def analyze_listing(
     listing_color = _extract_listing_color(f"{title}\n{description}")
     listing_trims = _extract_listing_trims(f"{title}\n{description}")
 
-    vin_match, recall_info, vin_findings, attribute_checks = await _vin_and_recalls(
+    vin_match, recall_info, model_issues, vin_findings, attribute_checks = await _vin_and_recalls(
         title, description, vin, listing_color, listing_trims
     )
     flags.extend(_vin_flags(vin_match))
@@ -181,6 +182,7 @@ async def analyze_listing(
         )
     findings.extend(vin_findings)
     flags.extend(_recall_flags(recall_info))
+    flags.extend(_model_issue_flags(model_issues))
 
     if price is not None and 0 < price < 1500:
         flags.append(
@@ -268,6 +270,7 @@ async def analyze_listing(
         attribute_checks=attribute_checks,
         vin_match=vin_match,
         recalls=recall_info,
+        model_issues=model_issues,
         image_findings=findings,
     )
 
@@ -278,10 +281,11 @@ async def _vin_and_recalls(
     vin: str | None,
     listing_color: str | None,
     listing_trims: list[str],
-) -> tuple[VinMatch, RecallsInfo, list[str], list[AttributeCheck]]:
+) -> tuple[VinMatch, RecallsInfo, ModelIssuesInfo, list[str], list[AttributeCheck]]:
     recalls = RecallsInfo(checked=False)
+    issues = ModelIssuesInfo(checked=False)
     if not vin:
-        return VinMatch(checked=False, matches_listing=None, decoded=None), recalls, [], []
+        return VinMatch(checked=False, matches_listing=None, decoded=None), recalls, issues, [], []
 
     try:
         decoded = await decode_vin(vin)
@@ -289,6 +293,7 @@ async def _vin_and_recalls(
         return (
             VinMatch(checked=False, matches_listing=None, decoded=None),
             recalls,
+            issues,
             ["NHTSA VIN lookup failed, so specs were not cross-checked."],
             [],
         )
@@ -297,6 +302,7 @@ async def _vin_and_recalls(
         return (
             VinMatch(checked=True, matches_listing=None, decoded=None),
             recalls,
+            issues,
             ["VIN could not be decoded via NHTSA vPIC."],
             [],
         )
@@ -418,13 +424,32 @@ async def _vin_and_recalls(
             recalls = await fetch_recalls(decoded.make, decoded.model, decoded.model_year)
             if recalls.checked:
                 findings.append(f"NHTSA recall campaigns for this make/model/year: {recalls.count}.")
+                for campaign in recalls.campaigns[:3]:
+                    label = campaign.component or campaign.campaign_number or "recall"
+                    if campaign.summary:
+                        findings.append(f"Recall · {label}: {campaign.summary}")
         except Exception:
             recalls = RecallsInfo(checked=False)
             findings.append("NHTSA recall lookup failed.")
 
+        try:
+            issues = await fetch_model_issues(decoded.make, decoded.model, decoded.model_year)
+            if issues.checked:
+                findings.append(
+                    f"NHTSA owner complaints for this make/model/year: {issues.complaint_count} "
+                    f"(crash-tagged {issues.crash_count}, fire-tagged {issues.fire_count})."
+                )
+                if issues.top_components:
+                    top = ", ".join(f"{c.component} ({c.count})" for c in issues.top_components[:4])
+                    findings.append(f"Most-cited complaint components: {top}.")
+        except Exception:
+            issues = ModelIssuesInfo(checked=False)
+            findings.append("NHTSA complaint lookup failed.")
+
     return (
         VinMatch(checked=True, matches_listing=matches, decoded=decoded, attribute_checks=[]),
         recalls,
+        issues,
         findings,
         checks,
     )
@@ -570,6 +595,50 @@ def _recall_flags(recalls: RecallsInfo) -> list[RiskFlag]:
             )
         ]
     return []
+
+
+def _model_issue_flags(issues: ModelIssuesInfo) -> list[RiskFlag]:
+    if not issues.checked:
+        return []
+    flags: list[RiskFlag] = []
+    if issues.death_count > 0:
+        flags.append(
+            RiskFlag(
+                code="complaint_deaths_reported",
+                severity="high",
+                message=(
+                    f"NHTSA complaints for this make/model/year include {issues.death_count} reported death(s). "
+                    "This is model-year data, not proof about this VIN."
+                ),
+            )
+        )
+    elif issues.crash_count >= 10 or issues.fire_count >= 5:
+        flags.append(
+            RiskFlag(
+                code="complaint_crash_or_fire_cluster",
+                severity="medium",
+                message=(
+                    f"NHTSA complaints include {issues.crash_count} crash-tagged and "
+                    f"{issues.fire_count} fire-tagged reports for this make/model/year."
+                ),
+            )
+        )
+
+    if issues.top_components:
+        top = issues.top_components[0]
+        share = top.count / max(1, issues.complaint_count)
+        if top.count >= 25 or (issues.complaint_count >= 40 and share >= 0.2):
+            flags.append(
+                RiskFlag(
+                    code="complaint_component_hotspot",
+                    severity="medium",
+                    message=(
+                        f"Common owner-complaint hotspot for this model year: {top.component} "
+                        f"({top.count} of {issues.complaint_count} complaints)."
+                    ),
+                )
+            )
+    return flags
 
 
 def _vlm_consistency_flags(vlm: VlmAssessment, text: str) -> list[RiskFlag]:

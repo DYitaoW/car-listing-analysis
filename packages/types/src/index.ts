@@ -66,6 +66,24 @@ export interface AnalysisReport {
     count: number;
     parkIt: boolean;
     parkOutside: boolean;
+    campaigns?: Array<{
+      campaignNumber?: string;
+      component?: string;
+      summary?: string;
+      consequence?: string;
+      parkIt?: boolean;
+      parkOutside?: boolean;
+    }>;
+  };
+  modelIssues: {
+    checked: boolean;
+    complaintCount: number;
+    crashCount: number;
+    fireCount: number;
+    injuryCount: number;
+    deathCount: number;
+    topComponents: Array<{ component: string; count: number }>;
+    note: string;
   };
   imageFindings: string[];
   historyChecked: false;

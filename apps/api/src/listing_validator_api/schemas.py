@@ -73,11 +73,41 @@ class VinMatch(CamelModel):
     attribute_checks: list[AttributeCheck] = Field(default_factory=list)
 
 
+class RecallCampaign(CamelModel):
+    campaign_number: str | None = None
+    component: str | None = None
+    summary: str | None = None
+    consequence: str | None = None
+    park_it: bool = False
+    park_outside: bool = False
+
+
 class RecallsInfo(CamelModel):
     checked: bool
     count: int = 0
     park_it: bool = False
     park_outside: bool = False
+    campaigns: list[RecallCampaign] = Field(default_factory=list)
+
+
+class ComplaintComponent(CamelModel):
+    component: str
+    count: int
+
+
+class ModelIssuesInfo(CamelModel):
+    """NHTSA owner-complaint signals for this make/model/year (not VIN-specific history)."""
+
+    checked: bool
+    complaint_count: int = 0
+    crash_count: int = 0
+    fire_count: int = 0
+    injury_count: int = 0
+    death_count: int = 0
+    top_components: list[ComplaintComponent] = Field(default_factory=list)
+    note: str = (
+        "Complaint totals are for the make/model/year, not proof this VIN has those problems."
+    )
 
 
 class AnalysisReport(CamelModel):
@@ -89,6 +119,9 @@ class AnalysisReport(CamelModel):
     attribute_checks: list[AttributeCheck] = Field(default_factory=list)
     vin_match: VinMatch
     recalls: RecallsInfo
+    model_issues: ModelIssuesInfo = Field(
+        default_factory=lambda: ModelIssuesInfo(checked=False)
+    )
     image_findings: list[str] = Field(default_factory=list)
     history_checked: Literal[False] = False
     title_verified: Literal[False] = False

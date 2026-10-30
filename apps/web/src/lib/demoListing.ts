@@ -95,6 +95,28 @@ export const DEMO_LISTING: Listing = {
       count: 3,
       parkIt: false,
       parkOutside: false,
+      campaigns: [
+        {
+          campaignNumber: "DEMO-0001",
+          component: "AIR BAGS",
+          summary: "Demo recall summary for sample report only.",
+          parkIt: false,
+          parkOutside: false,
+        },
+      ],
+    },
+    modelIssues: {
+      checked: true,
+      complaintCount: 120,
+      crashCount: 4,
+      fireCount: 1,
+      injuryCount: 2,
+      deathCount: 0,
+      topComponents: [
+        { component: "Electrical System", count: 28 },
+        { component: "Engine", count: 19 },
+      ],
+      note: "Complaint totals are for the make/model/year, not proof this VIN has those problems.",
     },
     imageFindings: [
       "front.jpg: 1280×720 JPEG.",

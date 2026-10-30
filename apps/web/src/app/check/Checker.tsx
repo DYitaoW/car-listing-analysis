@@ -323,6 +323,47 @@ export function Checker() {
                     </p>
                   </div>
                 ) : null}
+                {listing.report.recalls.checked && listing.report.recalls.campaigns?.length ? (
+                  <ul className="space-y-2">
+                    <p className="font-mono text-xs tracking-wider text-muted uppercase">
+                      Recall campaigns
+                    </p>
+                    {listing.report.recalls.campaigns.slice(0, 5).map((campaign, index) => (
+                      <li
+                        key={campaign.campaignNumber ?? `${campaign.component}-${index}`}
+                        className="border border-panel-border px-3 py-2.5 text-sm"
+                      >
+                        <p className="font-mono text-xs uppercase text-warn">
+                          {campaign.component ?? "Recall"}
+                          {campaign.parkIt || campaign.parkOutside ? " · urgent" : ""}
+                        </p>
+                        <p className="text-muted">{campaign.summary}</p>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+                {listing.report.modelIssues?.checked ? (
+                  <div className="space-y-2 border-t border-[var(--line)] pt-4">
+                    <p className="font-mono text-xs tracking-wider text-muted uppercase">
+                      Common issues (NHTSA complaints)
+                    </p>
+                    <p className="text-sm text-ink">
+                      {listing.report.modelIssues.complaintCount} owner complaints for this
+                      make/model/year · crash {listing.report.modelIssues.crashCount} · fire{" "}
+                      {listing.report.modelIssues.fireCount}
+                    </p>
+                    {listing.report.modelIssues.topComponents.length ? (
+                      <ul className="space-y-1 text-sm text-muted">
+                        {listing.report.modelIssues.topComponents.map((item) => (
+                          <li key={item.component}>
+                            {item.component}: {item.count}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                    <p className="text-xs text-muted">{listing.report.modelIssues.note}</p>
+                  </div>
+                ) : null}
                 {listing.report.attributeChecks?.length ? (
                   <ul className="space-y-2">
                     <p className="font-mono text-xs tracking-wider text-muted uppercase">
