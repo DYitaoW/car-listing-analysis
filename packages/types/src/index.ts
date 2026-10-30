@@ -4,9 +4,20 @@ export type ListingStatus = "pending" | "processing" | "completed" | "failed";
 
 export type ClaimVerdict = "supported" | "contradicted" | "unclear";
 
+export type PhotoEvidence = "supported" | "contradicted" | "unclear" | "not_applicable";
+
 export interface ClaimCheck {
   claim: string;
   verdict: ClaimVerdict;
+  detail: string;
+}
+
+export interface AttributeCheck {
+  attribute: string;
+  expected: string | null;
+  source: "vin" | "listing";
+  listingMatch: boolean | null;
+  photoEvidence: PhotoEvidence;
   detail: string;
 }
 
@@ -16,27 +27,63 @@ export interface RiskFlag {
   message: string;
 }
 
+export interface VinDecoded {
+  make?: string;
+  model?: string;
+  modelYear?: string;
+  bodyClass?: string;
+  trim?: string;
+  series?: string;
+  driveType?: string;
+  doors?: string;
+  fuelType?: string;
+  displacementL?: string;
+  engineCylinders?: string;
+  engineHp?: string;
+  transmission?: string;
+  plantCity?: string;
+  plantState?: string;
+  plantCountry?: string;
+  vehicleType?: string;
+  errorText?: string;
+}
+
 export interface AnalysisReport {
   riskScore: number;
   confidence: number;
   summary: string;
   flags: RiskFlag[];
   claimChecks: ClaimCheck[];
+  attributeChecks: AttributeCheck[];
   vinMatch: {
     checked: boolean;
     matchesListing: boolean | null;
-    decoded?: {
-      make?: string;
-      model?: string;
-      modelYear?: string;
-      bodyClass?: string;
-    };
+    decoded?: VinDecoded;
+    attributeChecks?: AttributeCheck[];
   };
   recalls: {
     checked: boolean;
     count: number;
     parkIt: boolean;
     parkOutside: boolean;
+    campaigns?: Array<{
+      campaignNumber?: string;
+      component?: string;
+      summary?: string;
+      consequence?: string;
+      parkIt?: boolean;
+      parkOutside?: boolean;
+    }>;
+  };
+  modelIssues: {
+    checked: boolean;
+    complaintCount: number;
+    crashCount: number;
+    fireCount: number;
+    injuryCount: number;
+    deathCount: number;
+    topComponents: Array<{ component: string; count: number }>;
+    note: string;
   };
   imageFindings: string[];
   historyChecked: false;

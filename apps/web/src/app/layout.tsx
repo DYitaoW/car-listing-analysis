@@ -29,7 +29,7 @@ export const metadata: Metadata = {
     "Upload marketplace photos and seller copy. SignalCheck returns risk signals for photo↔text mismatches, VIN specs, and recalls — not a title or history check.",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html
       lang="en"
