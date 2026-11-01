@@ -136,8 +136,8 @@ function SettingsBody() {
           </div>
         </dl>
         <div className="flex flex-wrap gap-2 pt-2">
-          <Link href="/listings" className="btn-secondary !py-2 text-sm">
-            My listings
+          <Link href="/checks" className="btn-secondary !py-2 text-sm">
+            My checks
           </Link>
           <button
             type="button"

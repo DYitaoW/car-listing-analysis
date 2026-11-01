@@ -67,6 +67,28 @@
   }
 }
 
+@keyframes step-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes signal-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 body {
   background:
     radial-gradient(900px 480px at 85% -10%, rgba(13, 110, 110, 0.1), transparent 55%),
@@ -107,6 +129,14 @@ body {
 
 .scan-line {
   animation: pulse-line 2.8s ease-in-out infinite;
+}
+
+.step-rise {
+  animation: step-rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.signal-panel {
+  animation: signal-in 0.35s ease-out both;
 }
 
 .input-field {
@@ -175,7 +205,9 @@ body {
   .rise-delay-2,
   .rise-delay-3,
   .hero-pan,
-  .scan-line {
+  .scan-line,
+  .step-rise,
+  .signal-panel {
     animation: none;
   }
 }
