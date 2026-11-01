@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { DemoListingPreview } from "@/components/DemoListingPreview";
 import { HeroVisual } from "@/components/HeroVisual";
+import { InteractiveDemoScore } from "@/components/InteractiveDemoScore";
+import { SignalExplorer } from "@/components/SignalExplorer";
 import { SiteFooter } from "@/components/SiteFooter";
 import { SiteHeader } from "@/components/SiteHeader";
 
@@ -51,53 +53,75 @@ export default function LandingPage() {
               step: "01",
               title: "Paste the listing",
               body: "Copy the title, asking price, and seller description. Add the VIN when the post includes one.",
+              href: "/check",
             },
             {
               step: "02",
               title: "Upload their photos",
               body: "Use the photos from the listing — the ones buyers actually see — not studio shots from another ad.",
+              href: "/check",
             },
             {
               step: "03",
               title: "Read the signals",
-              body: "Get a risk score, claim checks, photo findings, VIN alignment, and NHTSA recall context.",
+              body: "Open the dedicated results page for risk score, claim checks, VIN alignment, and recalls.",
+              href: "/report/demo",
             },
-          ].map((item) => (
-            <li key={item.step} className="border-t border-[var(--line)] pt-6">
+          ].map((item, index) => (
+            <li
+              key={item.step}
+              className="step-rise border-t border-[var(--line)] pt-6"
+              style={{ animationDelay: `${0.08 * index}s` }}
+            >
               <p className="font-mono text-xs tracking-[0.18em] text-muted">{item.step}</p>
               <h3 className="mt-3 text-xl font-semibold text-ink">{item.title}</h3>
               <p className="mt-2 text-sm leading-relaxed text-muted md:text-[0.95rem]">{item.body}</p>
+              <Link href={item.href} className="mt-4 inline-flex text-sm font-semibold text-accent hover:text-accent-dim">
+                Continue
+              </Link>
             </li>
           ))}
         </ol>
+        <Link href="/how-it-works" className="mt-10 inline-flex text-sm font-semibold text-ink hover:text-accent">
+          Full walkthrough →
+        </Link>
       </section>
 
       <DemoListingPreview />
 
+      <section className="mx-auto w-full max-w-6xl px-5 py-16 md:px-8 md:py-24">
+        <InteractiveDemoScore />
+      </section>
+
+      <section className="border-y border-[var(--line)] bg-paper">
+        <div className="mx-auto w-full max-w-6xl px-5 py-20 md:px-8 md:py-28">
+          <SignalExplorer />
+        </div>
+      </section>
+
       <section className="border-b border-[var(--line)] bg-background">
         <div className="mx-auto grid w-full max-w-6xl gap-12 px-5 py-20 md:grid-cols-[1.1fr_0.9fr] md:items-center md:px-8 md:py-28">
           <div>
-            <p className="font-mono text-xs tracking-[0.2em] text-accent uppercase">What we check</p>
+            <p className="font-mono text-xs tracking-[0.2em] text-accent uppercase">Site map</p>
             <h2 className="mt-3 font-display text-3xl tracking-tight text-ink md:text-4xl">
-              Signals buyers miss when skimming a marketplace post.
+              Pages built for checking — not browsing inventory.
             </h2>
             <p className="mt-4 max-w-xl text-base leading-relaxed text-muted">
-              SignalCheck inspects the materials the seller already published. It does not scrape
-              listings or claim the vehicle is authentic.
+              Intake, results, and saved checks are separate surfaces so each job stays clear.
             </p>
           </div>
           <ul className="space-y-5">
             {[
-              ["Photo quality & consistency", "Low-res placeholders, duplicates, and odd timestamps."],
-              ["Seller claims", "“No rust,” “like new,” and similar lines held against the photos."],
-              ["VIN & recalls", "NHTSA decode vs listing text, plus open recall campaigns."],
-            ].map(([title, body]) => (
-              <li key={title} className="flex gap-4">
-                <span className="mt-2 h-2 w-2 shrink-0 rounded-[2px] bg-accent" aria-hidden />
-                <div>
-                  <p className="font-semibold text-ink">{title}</p>
+              ["/check", "Check a listing", "Improved intake with photo dropzone and live preview."],
+              ["/report/demo", "Results", "Full report layout for a completed analysis."],
+              ["/checks", "My checks", "List of saved listing analyses for your account."],
+              ["/about", "About & limits", "What SignalCheck claims — and what it refuses to claim."],
+            ].map(([href, title, body]) => (
+              <li key={href}>
+                <Link href={href} className="group block border-t border-[var(--line)] pt-4">
+                  <p className="font-semibold text-ink group-hover:text-accent">{title}</p>
                   <p className="mt-1 text-sm text-muted">{body}</p>
-                </div>
+                </Link>
               </li>
             ))}
           </ul>
@@ -125,7 +149,7 @@ export default function LandingPage() {
           <div>
             <h2 className="font-display text-3xl tracking-tight md:text-4xl">Ready to check a listing?</h2>
             <p className="mt-3 max-w-lg text-white/70">
-              Upload photos and seller copy. A risk report appears when analysis finishes.
+              Upload photos and seller copy. A dedicated results page opens when analysis finishes.
             </p>
           </div>
           <Link

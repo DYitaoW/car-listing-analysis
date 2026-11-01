@@ -30,9 +30,14 @@ export function DemoListingPreview() {
               <dd className="mt-1 text-muted">{DEMO_LISTING_INPUT.description}</dd>
             </div>
           </dl>
-          <Link href="/check?demo=1" className="btn-primary mt-8 inline-flex">
-            Open demo in checker
-          </Link>
+          <div className="mt-8 flex flex-wrap gap-3">
+            <Link href="/report/demo" className="btn-primary inline-flex">
+              Open demo results
+            </Link>
+            <Link href="/check?demo=1" className="btn-secondary inline-flex">
+              Demo in checker
+            </Link>
+          </div>
         </div>
 
         <div className="border border-panel-border bg-panel p-6 md:p-7">

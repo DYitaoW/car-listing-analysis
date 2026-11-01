@@ -6,6 +6,9 @@ import { useAuth } from "@/components/AuthProvider";
 export function SiteHeader({ tone = "light" }: { tone?: "light" | "on-hero" }) {
   const onHero = tone === "on-hero";
   const { configured, loading, user } = useAuth();
+  const linkClass = onHero
+    ? "text-white/80 hover:text-white"
+    : "text-muted hover:text-ink";
 
   return (
     <header
@@ -24,33 +27,19 @@ export function SiteHeader({ tone = "light" }: { tone?: "light" | "on-hero" }) {
         </span>
       </Link>
       <nav className="flex items-center gap-2 sm:gap-3">
-        <Link
-          href="/#demo"
-          className={`hidden text-sm font-medium sm:inline ${
-            onHero ? "text-white/80 hover:text-white" : "text-muted hover:text-ink"
-          }`}
-        >
+        <Link href="/how-it-works" className={`hidden text-sm font-medium md:inline ${linkClass}`}>
+          How it works
+        </Link>
+        <Link href="/#demo" className={`hidden text-sm font-medium sm:inline ${linkClass}`}>
           Demo
         </Link>
+        <Link href="/checks" className={`hidden text-sm font-medium sm:inline ${linkClass}`}>
+          My checks
+        </Link>
         {configured && user ? (
-          <>
-            <Link
-              href="/listings"
-              className={`hidden text-sm font-medium sm:inline ${
-                onHero ? "text-white/80 hover:text-white" : "text-muted hover:text-ink"
-              }`}
-            >
-              My listings
-            </Link>
-            <Link
-              href="/settings"
-              className={`hidden text-sm font-medium sm:inline ${
-                onHero ? "text-white/80 hover:text-white" : "text-muted hover:text-ink"
-              }`}
-            >
-              Settings
-            </Link>
-          </>
+          <Link href="/settings" className={`hidden text-sm font-medium sm:inline ${linkClass}`}>
+            Settings
+          </Link>
         ) : null}
         <Link
           href="/check"
@@ -64,12 +53,7 @@ export function SiteHeader({ tone = "light" }: { tone?: "light" | "on-hero" }) {
         </Link>
         {configured && !loading ? (
           user ? (
-            <Link
-              href="/settings"
-              className={`text-sm font-medium md:hidden ${
-                onHero ? "text-white/80 hover:text-white" : "text-muted hover:text-ink"
-              }`}
-            >
+            <Link href="/settings" className={`text-sm font-medium md:hidden ${linkClass}`}>
               Account
             </Link>
           ) : (

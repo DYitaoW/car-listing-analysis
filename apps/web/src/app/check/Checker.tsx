@@ -1,31 +1,37 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 import type { Listing } from "@listing-validator/types";
 import { useAuth } from "@/components/AuthProvider";
+import { ReportView } from "@/components/ReportView";
 import { api, apiBaseUrl } from "@/lib/api";
 import { DEMO_LISTING, DEMO_LISTING_INPUT } from "@/lib/demoListing";
+import { isTerminal } from "@/lib/report";
 
 export function Checker() {
+  const router = useRouter();
   const params = useSearchParams();
   const existingId = params.get("id");
   const isDemo = params.get("demo") === "1";
   const { configured, loading: authLoading, user } = useAuth();
+
   const [title, setTitle] = useState(isDemo ? DEMO_LISTING_INPUT.title : "");
   const [description, setDescription] = useState(isDemo ? DEMO_LISTING_INPUT.description : "");
   const [price, setPrice] = useState(isDemo ? DEMO_LISTING_INPUT.price : "");
   const [vin, setVin] = useState(isDemo ? DEMO_LISTING_INPUT.vin : "");
   const [sourceUrl, setSourceUrl] = useState(isDemo ? DEMO_LISTING_INPUT.sourceUrl : "");
-  const [files, setFiles] = useState<FileList | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [listing, setListing] = useState<Listing | null>(isDemo ? DEMO_LISTING : null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [storageMode, setStorageMode] = useState<string>("…");
-  const [visionMode, setVisionMode] = useState<string>("…");
-  const [authMode, setAuthMode] = useState<string>("…");
+  const [storageMode, setStorageMode] = useState("…");
+  const [visionMode, setVisionMode] = useState("…");
+  const [authMode, setAuthMode] = useState("…");
   const [apiError, setApiError] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     api
@@ -65,7 +71,7 @@ export function Checker() {
   const listingStatus = listing?.status;
   useEffect(() => {
     if (isDemo) return;
-    if (!listingId || listingStatus === "completed" || listingStatus === "failed") return;
+    if (!listingId || isTerminal(listing)) return;
     const id = listingId;
     let cancelled = false;
     async function tick() {
@@ -82,17 +88,20 @@ export function Checker() {
       cancelled = true;
       clearInterval(timer);
     };
-  }, [isDemo, listingId, listingStatus]);
+  }, [isDemo, listing, listingId, listingStatus]);
 
-  const fileCount = files?.length ?? 0;
+  useEffect(() => {
+    if (isDemo || !listing || listing.id === "demo-listing") return;
+    if (listing.status === "completed") {
+      router.push(`/report/${listing.id}`);
+    }
+  }, [isDemo, listing, router]);
 
-  const scoreColor = useMemo(() => {
-    const score = listing?.report?.riskScore;
-    if (score == null) return "text-muted";
-    if (score >= 60) return "text-danger";
-    if (score >= 35) return "text-warn";
-    return "text-accent";
-  }, [listing]);
+  function addFiles(list: FileList | File[] | null) {
+    if (!list) return;
+    const next = Array.from(list).filter((f) => f.type.startsWith("image/"));
+    setFiles((prev) => [...prev, ...next].slice(0, 12));
+  }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -101,9 +110,9 @@ export function Checker() {
     setListing(null);
     try {
       if (isDemo) {
-        throw new Error("Demo mode is read-only. Clear ?demo=1 or open Check a listing to run a real analysis.");
+        throw new Error("Demo mode is read-only. Open Check a listing without ?demo=1.");
       }
-      if (!files || files.length === 0) {
+      if (files.length === 0) {
         throw new Error("Add at least one listing photo.");
       }
       const created = await api.createListing({
@@ -113,7 +122,7 @@ export function Checker() {
         vin: vin || null,
         sourceUrl: sourceUrl || null,
       });
-      const uploaded = await api.uploadImages(created.id, Array.from(files));
+      const uploaded = await api.uploadImages(created.id, files);
       setListing(uploaded);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Submit failed");
@@ -126,11 +135,10 @@ export function Checker() {
 
   if (needsSignIn) {
     return (
-      <div className="border border-panel-border bg-panel p-6 md:p-8">
+      <div className="border border-[var(--line)] bg-panel p-8">
         <h2 className="font-display text-2xl text-ink">Sign in to check a listing</h2>
         <p className="mt-2 max-w-lg text-sm text-muted">
-          When Supabase Auth is enabled, listing checks are saved to your account so you can reopen
-          them later.
+          Listing checks are saved to your account so you can reopen them under My checks.
         </p>
         <Link href="/login?next=/check" className="btn-primary mt-5 inline-flex">
           Sign in
@@ -140,21 +148,22 @@ export function Checker() {
   }
 
   return (
-    <div className="grid gap-8 lg:grid-cols-2 lg:gap-10">
-      <form
-        onSubmit={onSubmit}
-        className="space-y-4 border border-panel-border bg-panel p-6 md:p-7"
-      >
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--line)] pb-4">
-          <p className="text-sm font-semibold text-ink">Listing details</p>
-          <p className="font-mono text-[11px] tracking-wide text-muted uppercase">
-            {storageMode} · {visionMode} · {authMode} · {apiBaseUrl}
+    <div className="grid gap-10 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
+      <form onSubmit={onSubmit} className="space-y-5">
+        <div className="flex flex-wrap items-end justify-between gap-3 border-b border-[var(--line)] pb-4">
+          <div>
+            <p className="font-mono text-xs tracking-[0.18em] text-accent uppercase">Intake</p>
+            <h2 className="mt-2 font-display text-2xl text-ink">Listing details</h2>
+          </div>
+          <p className="font-mono text-[10px] tracking-wide text-muted uppercase">
+            {storageMode} · {visionMode}
           </p>
         </div>
+
         {apiError ? <p className="text-sm text-danger">{apiError}</p> : null}
         {isDemo ? (
-          <p className="text-xs text-muted">
-            Demo mode shows a sample report only.{" "}
+          <p className="text-sm text-muted">
+            Demo mode is read-only.{" "}
             <Link href="/check" className="text-accent hover:text-accent-dim">
               Start a real check
             </Link>
@@ -163,174 +172,141 @@ export function Checker() {
         ) : null}
         {configured && user ? (
           <p className="text-xs text-muted">
-            Signed in as <span className="text-ink">{user.email ?? user.id}</span> — this check will be
-            saved to your account.
+            Signed in as <span className="text-ink">{user.email ?? user.id}</span>
           </p>
         ) : null}
 
-        <Field label="Listing title">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Listing title" className="sm:col-span-2">
+            <input
+              required
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              className="input-field"
+              placeholder="2018 Honda Civic LX — one owner"
+            />
+          </Field>
+          <Field label="Asking price (USD)">
+            <input
+              type="number"
+              min={0}
+              step="1"
+              value={price}
+              onChange={(e) => setPrice(e.target.value)}
+              className="input-field"
+              placeholder="14500"
+            />
+          </Field>
+          <Field label="VIN (optional)">
+            <input
+              value={vin}
+              onChange={(e) => setVin(e.target.value)}
+              className="input-field font-mono uppercase"
+              placeholder="1HGCV1F3XJA000000"
+              maxLength={17}
+            />
+          </Field>
+          <Field label="Seller description" className="sm:col-span-2">
+            <textarea
+              required
+              rows={5}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              className="input-field resize-y"
+              placeholder="Paste the seller description…"
+            />
+          </Field>
+          <Field label="Source URL (optional)" className="sm:col-span-2">
+            <input
+              type="url"
+              value={sourceUrl}
+              onChange={(e) => setSourceUrl(e.target.value)}
+              className="input-field"
+              placeholder="https://…"
+            />
+          </Field>
+        </div>
+
+        <div
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragOver(true);
+          }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragOver(false);
+            addFiles(e.dataTransfer.files);
+          }}
+          className={`border border-dashed px-5 py-8 transition ${
+            dragOver ? "border-accent bg-accent-soft/40" : "border-[var(--line)] bg-paper/70"
+          }`}
+        >
           <input
-            required
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            className="input-field"
-            placeholder="2018 Honda Civic LX — one owner"
-          />
-        </Field>
-        <Field label="Asking price (USD)">
-          <input
-            type="number"
-            min={0}
-            step="1"
-            value={price}
-            onChange={(e) => setPrice(e.target.value)}
-            className="input-field"
-            placeholder="14500"
-          />
-        </Field>
-        <Field label="Description">
-          <textarea
-            required
-            rows={6}
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            className="input-field resize-y"
-            placeholder="Seller description from the marketplace listing…"
-          />
-        </Field>
-        <Field label="VIN (optional)">
-          <input
-            value={vin}
-            onChange={(e) => setVin(e.target.value)}
-            className="input-field font-mono uppercase"
-            placeholder="1HGCV1F3XJA000000"
-            maxLength={17}
-          />
-        </Field>
-        <Field label="Source URL (optional)">
-          <input
-            type="url"
-            value={sourceUrl}
-            onChange={(e) => setSourceUrl(e.target.value)}
-            className="input-field"
-            placeholder="https://…"
-          />
-        </Field>
-        <Field label={`Photos (${fileCount})`}>
-          <input
+            ref={fileInputRef}
             type="file"
             accept="image/*"
             multiple
-            onChange={(e) => setFiles(e.target.files)}
-            className="block w-full text-sm text-muted file:mr-3 file:rounded-md file:border-0 file:bg-accent-soft file:px-3 file:py-2 file:text-sm file:font-medium file:text-accent-dim"
+            className="hidden"
+            onChange={(e) => {
+              addFiles(e.target.files);
+              e.target.value = "";
+            }}
           />
-        </Field>
+          <p className="text-sm font-semibold text-ink">Drop listing photos here</p>
+          <p className="mt-1 text-sm text-muted">Up to 12 images from the marketplace post</p>
+          <button
+            type="button"
+            className="btn-secondary mt-4 !py-2 text-sm"
+            onClick={() => fileInputRef.current?.click()}
+          >
+            Choose photos ({files.length})
+          </button>
+          {files.length ? (
+            <ul className="mt-4 space-y-1 text-xs text-muted">
+              {files.map((file, index) => (
+                <li key={`${file.name}-${index}`} className="flex items-center justify-between gap-3">
+                  <span className="truncate">{file.name}</span>
+                  <button
+                    type="button"
+                    className="text-accent hover:text-accent-dim"
+                    onClick={() => setFiles((prev) => prev.filter((_, i) => i !== index))}
+                  >
+                    Remove
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+
         {error ? <p className="text-sm text-danger">{error}</p> : null}
-        <button type="submit" disabled={submitting} className="btn-primary w-full">
-          {submitting ? "Submitting…" : "Analyze listing"}
+        <button type="submit" disabled={submitting || isDemo} className="btn-primary w-full">
+          {submitting ? "Starting analysis…" : "Analyze listing"}
         </button>
+        <p className="text-center font-mono text-[10px] tracking-wide text-muted uppercase">
+          Proxy {apiBaseUrl}
+        </p>
       </form>
 
-      <section className="border border-panel-border bg-panel p-6 md:p-7">
+      <section className="border border-[var(--line)] bg-panel/90 p-6 md:sticky md:top-6 md:self-start md:p-7">
         {!listing ? (
-          <div className="flex h-full min-h-72 flex-col justify-center gap-3">
-            <p className="font-display text-2xl text-ink">Report appears here</p>
+          <div className="flex min-h-72 flex-col justify-center gap-3">
+            <p className="font-mono text-xs tracking-[0.18em] text-accent uppercase">Preview</p>
+            <p className="font-display text-3xl text-ink">Report builds here</p>
             <p className="max-w-sm text-sm leading-relaxed text-muted">
-              After upload, analysis runs asynchronously. This panel updates until the job
-              completes.
+              After you submit, analysis runs in the background. Completed checks open on a dedicated
+              results page.
             </p>
           </div>
         ) : (
-          <div className="space-y-5">
-            <div className="flex items-start justify-between gap-4 border-b border-[var(--line)] pb-4">
-              <div>
-                <p className="font-mono text-xs tracking-wider text-muted uppercase">Status</p>
-                <p className="mt-1 text-lg capitalize text-ink">{listing.status}</p>
-              </div>
-              {listing.report ? (
-                <div className="text-right">
-                  <p className="font-mono text-xs tracking-wider text-muted uppercase">Risk score</p>
-                  <p className={`font-display text-5xl tabular-nums ${scoreColor}`}>
-                    {listing.report.riskScore}
-                  </p>
-                </div>
-              ) : null}
-            </div>
-
-            {listing.error ? <p className="text-sm text-danger">{listing.error}</p> : null}
-
-            {listing.report ? (
-              <>
-                <p className="text-sm leading-relaxed text-muted">{listing.report.summary}</p>
-                <p className="font-mono text-xs text-muted">
-                  Confidence {Math.round(listing.report.confidence * 100)}%
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  <MetaChip>History not checked</MetaChip>
-                  <MetaChip>Title not verified</MetaChip>
-                  {listing.report.recalls.checked ? (
-                    <MetaChip>
-                      Recalls: {listing.report.recalls.count}
-                      {listing.report.recalls.parkIt ? " · PARK IT" : ""}
-                    </MetaChip>
-                  ) : null}
-                </div>
-                {listing.report.vinMatch.checked ? (
-                  <p className="text-sm text-ink">
-                    VIN{" "}
-                    {listing.report.vinMatch.matchesListing
-                      ? "agrees with the listing text"
-                      : listing.report.vinMatch.matchesListing === false
-                        ? "conflicts with the listing text"
-                        : "was decoded"}
-                    {listing.report.vinMatch.decoded
-                      ? ` · ${[
-                          listing.report.vinMatch.decoded.modelYear,
-                          listing.report.vinMatch.decoded.make,
-                          listing.report.vinMatch.decoded.model,
-                        ]
-                          .filter(Boolean)
-                          .join(" ")}`
-                      : ""}
-                  </p>
-                ) : null}
-                {listing.report.imageFindings?.length ? (
-                  <ul className="space-y-1 border-t border-[var(--line)] pt-4">
-                    {listing.report.imageFindings.map((line) => (
-                      <li key={line} className="text-sm text-muted">
-                        {line}
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-                {listing.report.claimChecks.length ? (
-                  <ul className="space-y-2">
-                    {listing.report.claimChecks.map((check) => (
-                      <li key={check.claim} className="border border-panel-border px-3 py-2.5 text-sm">
-                        <span className="font-mono text-xs uppercase text-accent">{check.verdict}</span>
-                        <p className="text-ink">{check.claim}</p>
-                        <p className="text-muted">{check.detail}</p>
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-                {listing.report.flags.length ? (
-                  <ul className="space-y-2">
-                    {listing.report.flags.map((flag) => (
-                      <li key={flag.code} className="border border-panel-border px-3 py-2.5 text-sm">
-                        <span className="font-mono text-xs uppercase text-warn">{flag.severity}</span>
-                        <p className="text-ink">{flag.message}</p>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-sm text-muted">No heuristic flags raised.</p>
-                )}
-                <p className="text-xs leading-relaxed text-muted">{listing.report.disclaimer}</p>
-              </>
-            ) : (
-              <p className="animate-pulse text-sm text-muted">Running analysis…</p>
-            )}
+          <div className="space-y-4">
+            <ReportView listing={listing} compact />
+            {!isDemo && listing.id !== "demo-listing" ? (
+              <Link href={`/report/${listing.id}`} className="btn-secondary w-full !py-2 text-sm">
+                Open full results
+              </Link>
+            ) : null}
           </div>
         )}
       </section>
@@ -338,19 +314,19 @@ export function Checker() {
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({
+  label,
+  children,
+  className = "",
+}: {
+  label: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
   return (
-    <label className="block space-y-1.5">
+    <label className={`block space-y-1.5 ${className}`}>
       <span className="text-xs font-medium tracking-wide text-muted uppercase">{label}</span>
       {children}
     </label>
-  );
-}
-
-function MetaChip({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="border border-panel-border bg-paper px-2.5 py-1 font-mono text-[11px] text-muted">
-      {children}
-    </span>
   );
 }
