@@ -12,7 +12,9 @@ from listing_validator_api.config import get_settings
 _LIMITS: dict[str, tuple[int, int]] = {
     "POST /listings": (10, 60),
     "POST /listings/*/images": (20, 60),
+    "POST /listings/*/images/from-urls": (10, 60),
     "POST /listings/*/analyze": (10, 60),
+    "POST /import/marketplace": (8, 60),
     "DELETE /me": (3, 3600),
 }
 
@@ -43,9 +45,19 @@ def _pattern_for(method: str, path: str) -> str | None:
     normalized = path.rstrip("/") or "/"
     if method == "POST" and normalized == "/listings":
         return "POST /listings"
+    if method == "POST" and normalized == "/import/marketplace":
+        return "POST /import/marketplace"
     if method == "DELETE" and normalized == "/me":
         return "DELETE /me"
     parts = normalized.split("/")
+    if (
+        method == "POST"
+        and len(parts) == 5
+        and parts[1] == "listings"
+        and parts[3] == "images"
+        and parts[4] == "from-urls"
+    ):
+        return "POST /listings/*/images/from-urls"
     if method == "POST" and len(parts) == 4 and parts[1] == "listings" and parts[3] == "images":
         return "POST /listings/*/images"
     if method == "POST" and len(parts) == 4 and parts[1] == "listings" and parts[3] == "analyze":

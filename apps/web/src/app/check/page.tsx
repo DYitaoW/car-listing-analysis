@@ -19,11 +19,11 @@ export default function CheckPage() {
         <header className="max-w-2xl">
           <p className="font-mono text-xs tracking-[0.2em] text-accent uppercase">Listing checker</p>
           <h1 className="mt-3 font-display text-4xl tracking-tight text-ink md:text-5xl">
-            Analyze a marketplace listing
+            Check a Facebook Marketplace car
           </h1>
           <p className="mt-3 text-base leading-relaxed text-muted md:text-lg">
-            Submit the seller&apos;s photos and copy. SignalCheck returns risk signals for photo
-            quality, claims, VIN alignment, and recalls.
+            Paste a Marketplace link to pull listing details, or enter them yourself. Then run photo,
+            claim, VIN, and recall checks.
           </p>
         </header>
         <Suspense fallback={<p className="text-sm text-muted">Loading checker…</p>}>

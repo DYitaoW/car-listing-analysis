@@ -2,23 +2,32 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Listing } from "@listing-validator/types";
 import { useAuth } from "@/components/AuthProvider";
 import { api, apiBaseUrl } from "@/lib/api";
 import { DEMO_LISTING, DEMO_LISTING_INPUT } from "@/lib/demoListing";
+
+type IntakeMode = "link" | "manual";
 
 export function Checker() {
   const params = useSearchParams();
   const existingId = params.get("id");
   const isDemo = params.get("demo") === "1";
   const { configured, loading: authLoading, user } = useAuth();
+
+  const [mode, setMode] = useState<IntakeMode>("link");
+  const [marketplaceUrl, setMarketplaceUrl] = useState("");
+  const [importing, setImporting] = useState(false);
+  const [importWarnings, setImportWarnings] = useState<string[]>([]);
+  const [importedImageUrls, setImportedImageUrls] = useState<string[]>([]);
+
   const [title, setTitle] = useState(isDemo ? DEMO_LISTING_INPUT.title : "");
   const [description, setDescription] = useState(isDemo ? DEMO_LISTING_INPUT.description : "");
   const [price, setPrice] = useState(isDemo ? DEMO_LISTING_INPUT.price : "");
   const [vin, setVin] = useState(isDemo ? DEMO_LISTING_INPUT.vin : "");
   const [sourceUrl, setSourceUrl] = useState(isDemo ? DEMO_LISTING_INPUT.sourceUrl : "");
-  const [files, setFiles] = useState<FileList | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [listing, setListing] = useState<Listing | null>(isDemo ? DEMO_LISTING : null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -26,6 +35,8 @@ export function Checker() {
   const [visionMode, setVisionMode] = useState<string>("…");
   const [authMode, setAuthMode] = useState<string>("…");
   const [apiError, setApiError] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     api
@@ -84,7 +95,16 @@ export function Checker() {
     };
   }, [isDemo, listingId, listingStatus]);
 
-  const fileCount = files?.length ?? 0;
+  const previewUrls = useMemo(
+    () => files.map((file) => ({ name: file.name, url: URL.createObjectURL(file) })),
+    [files],
+  );
+
+  useEffect(() => {
+    return () => {
+      for (const item of previewUrls) URL.revokeObjectURL(item.url);
+    };
+  }, [previewUrls]);
 
   const scoreColor = useMemo(() => {
     const score = listing?.report?.riskScore;
@@ -94,6 +114,37 @@ export function Checker() {
     return "text-accent";
   }, [listing]);
 
+  function addFiles(list: FileList | File[] | null) {
+    if (!list) return;
+    const next = Array.from(list).filter((f) => f.type.startsWith("image/"));
+    setFiles((prev) => {
+      const merged = [...prev, ...next];
+      return merged.slice(0, 12);
+    });
+  }
+
+  async function onImportMarketplace(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setImportWarnings([]);
+    setImporting(true);
+    try {
+      const draft = await api.importMarketplace({ url: marketplaceUrl.trim() });
+      setTitle(draft.title);
+      setDescription(draft.description);
+      setPrice(draft.price != null ? String(Math.round(draft.price)) : "");
+      setVin(draft.vin ?? "");
+      setSourceUrl(draft.sourceUrl);
+      setImportedImageUrls(draft.imageUrls);
+      setImportWarnings(draft.warnings);
+      setMode("manual");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not import that Marketplace link");
+    } finally {
+      setImporting(false);
+    }
+  }
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -101,10 +152,14 @@ export function Checker() {
     setListing(null);
     try {
       if (isDemo) {
-        throw new Error("Demo mode is read-only. Clear ?demo=1 or open Check a listing to run a real analysis.");
+        throw new Error(
+          "Demo mode is read-only. Clear ?demo=1 or open Check a listing to run a real analysis.",
+        );
       }
-      if (!files || files.length === 0) {
-        throw new Error("Add at least one listing photo.");
+      const hasLocalPhotos = files.length > 0;
+      const hasRemotePhotos = importedImageUrls.length > 0;
+      if (!hasLocalPhotos && !hasRemotePhotos) {
+        throw new Error("Add listing photos, or import a Marketplace link that includes photos.");
       }
       const created = await api.createListing({
         title,
@@ -113,8 +168,13 @@ export function Checker() {
         vin: vin || null,
         sourceUrl: sourceUrl || null,
       });
-      const uploaded = await api.uploadImages(created.id, Array.from(files));
-      setListing(uploaded);
+      let next: Listing;
+      if (hasLocalPhotos) {
+        next = await api.uploadImages(created.id, files);
+      } else {
+        next = await api.uploadImagesFromUrls(created.id, importedImageUrls);
+      }
+      setListing(next);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Submit failed");
     } finally {
@@ -126,13 +186,13 @@ export function Checker() {
 
   if (needsSignIn) {
     return (
-      <div className="border border-panel-border bg-panel p-6 md:p-8">
-        <h2 className="font-display text-2xl text-ink">Sign in to check a listing</h2>
-        <p className="mt-2 max-w-lg text-sm text-muted">
-          When Supabase Auth is enabled, listing checks are saved to your account so you can reopen
-          them later.
+      <div className="border border-[var(--line)] bg-panel/90 p-8 md:p-10">
+        <p className="font-mono text-xs tracking-[0.18em] text-accent uppercase">Account required</p>
+        <h2 className="mt-3 font-display text-3xl text-ink">Sign in to check a listing</h2>
+        <p className="mt-3 max-w-lg text-sm leading-relaxed text-muted">
+          Listing checks are saved to your account so you can reopen them later from My listings.
         </p>
-        <Link href="/login?next=/check" className="btn-primary mt-5 inline-flex">
+        <Link href="/login?next=/check" className="btn-primary mt-6 inline-flex">
           Sign in
         </Link>
       </div>
@@ -140,20 +200,23 @@ export function Checker() {
   }
 
   return (
-    <div className="grid gap-8 lg:grid-cols-2 lg:gap-10">
-      <form
-        onSubmit={onSubmit}
-        className="space-y-4 border border-panel-border bg-panel p-6 md:p-7"
-      >
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--line)] pb-4">
-          <p className="text-sm font-semibold text-ink">Listing details</p>
-          <p className="font-mono text-[11px] tracking-wide text-muted uppercase">
-            {storageMode} · {visionMode} · {authMode} · {apiBaseUrl}
+    <div className="grid gap-10 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] lg:gap-12">
+      <div className="space-y-6">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="font-mono text-xs tracking-[0.18em] text-accent uppercase">Intake</p>
+            <h2 className="mt-2 font-display text-2xl tracking-tight text-ink md:text-3xl">
+              Add a vehicle listing
+            </h2>
+          </div>
+          <p className="font-mono text-[10px] tracking-wide text-muted uppercase">
+            {storageMode} · {visionMode}
           </p>
         </div>
+
         {apiError ? <p className="text-sm text-danger">{apiError}</p> : null}
         {isDemo ? (
-          <p className="text-xs text-muted">
+          <p className="text-sm text-muted">
             Demo mode shows a sample report only.{" "}
             <Link href="/check" className="text-accent hover:text-accent-dim">
               Start a real check
@@ -161,83 +224,250 @@ export function Checker() {
             .
           </p>
         ) : null}
-        {configured && user ? (
-          <p className="text-xs text-muted">
-            Signed in as <span className="text-ink">{user.email ?? user.id}</span> — this check will be
-            saved to your account.
-          </p>
-        ) : null}
 
-        <Field label="Listing title">
-          <input
-            required
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            className="input-field"
-            placeholder="2018 Honda Civic LX — one owner"
-          />
-        </Field>
-        <Field label="Asking price (USD)">
-          <input
-            type="number"
-            min={0}
-            step="1"
-            value={price}
-            onChange={(e) => setPrice(e.target.value)}
-            className="input-field"
-            placeholder="14500"
-          />
-        </Field>
-        <Field label="Description">
-          <textarea
-            required
-            rows={6}
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            className="input-field resize-y"
-            placeholder="Seller description from the marketplace listing…"
-          />
-        </Field>
-        <Field label="VIN (optional)">
-          <input
-            value={vin}
-            onChange={(e) => setVin(e.target.value)}
-            className="input-field font-mono uppercase"
-            placeholder="1HGCV1F3XJA000000"
-            maxLength={17}
-          />
-        </Field>
-        <Field label="Source URL (optional)">
-          <input
-            type="url"
-            value={sourceUrl}
-            onChange={(e) => setSourceUrl(e.target.value)}
-            className="input-field"
-            placeholder="https://…"
-          />
-        </Field>
-        <Field label={`Photos (${fileCount})`}>
-          <input
-            type="file"
-            accept="image/*"
-            multiple
-            onChange={(e) => setFiles(e.target.files)}
-            className="block w-full text-sm text-muted file:mr-3 file:rounded-md file:border-0 file:bg-accent-soft file:px-3 file:py-2 file:text-sm file:font-medium file:text-accent-dim"
-          />
-        </Field>
-        {error ? <p className="text-sm text-danger">{error}</p> : null}
-        <button type="submit" disabled={submitting} className="btn-primary w-full">
-          {submitting ? "Submitting…" : "Analyze listing"}
-        </button>
-      </form>
+        <div className="flex gap-1 border-b border-[var(--line)]">
+          {(
+            [
+              ["link", "Facebook link"],
+              ["manual", "Enter details"],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setMode(id)}
+              className={`relative px-4 py-3 text-sm font-semibold transition ${
+                mode === id ? "text-ink" : "text-muted hover:text-ink"
+              }`}
+            >
+              {label}
+              {mode === id ? (
+                <span className="absolute inset-x-3 -bottom-px h-0.5 bg-accent" aria-hidden />
+              ) : null}
+            </button>
+          ))}
+        </div>
 
-      <section className="border border-panel-border bg-panel p-6 md:p-7">
+        {mode === "link" ? (
+          <form onSubmit={onImportMarketplace} className="space-y-4">
+            <div className="relative overflow-hidden border border-[var(--line)] bg-panel px-5 py-6 md:px-6 md:py-7">
+              <div
+                className="pointer-events-none absolute -right-8 -top-10 h-40 w-40 rounded-full bg-accent/10 blur-2xl"
+                aria-hidden
+              />
+              <p className="text-sm leading-relaxed text-muted">
+                Paste a public Facebook Marketplace vehicle listing. We pull title, price,
+                description, VIN (if present), and photo URLs when Facebook exposes them.
+              </p>
+              <label className="mt-5 block space-y-2">
+                <span className="text-xs font-medium tracking-wide text-muted uppercase">
+                  Marketplace URL
+                </span>
+                <input
+                  required
+                  type="url"
+                  value={marketplaceUrl}
+                  onChange={(e) => setMarketplaceUrl(e.target.value)}
+                  className="input-field"
+                  placeholder="https://www.facebook.com/marketplace/item/…"
+                  disabled={isDemo}
+                />
+              </label>
+              <button
+                type="submit"
+                disabled={importing || isDemo}
+                className="btn-primary mt-4 w-full sm:w-auto"
+              >
+                {importing ? "Extracting…" : "Extract listing details"}
+              </button>
+              <p className="mt-4 text-xs leading-relaxed text-muted">
+                Facebook often serves login walls to automated fetches. If fields come back empty,
+                switch to Enter details and paste the seller copy yourself.
+              </p>
+            </div>
+            {error ? <p className="text-sm text-danger">{error}</p> : null}
+          </form>
+        ) : (
+          <form onSubmit={onSubmit} className="space-y-5">
+            {importWarnings.length ? (
+              <ul className="space-y-1 border border-warn/30 bg-[#fff8f0] px-4 py-3 text-sm text-warn">
+                {importWarnings.map((warning) => (
+                  <li key={warning}>{warning}</li>
+                ))}
+              </ul>
+            ) : null}
+
+            {configured && user ? (
+              <p className="text-xs text-muted">
+                Signed in as <span className="text-ink">{user.email ?? user.id}</span> — this check
+                saves to your account.
+              </p>
+            ) : null}
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Listing title" className="sm:col-span-2">
+                <input
+                  required
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  className="input-field"
+                  placeholder="2018 Honda Civic LX — one owner"
+                />
+              </Field>
+              <Field label="Asking price (USD)">
+                <input
+                  type="number"
+                  min={0}
+                  step="1"
+                  value={price}
+                  onChange={(e) => setPrice(e.target.value)}
+                  className="input-field"
+                  placeholder="14500"
+                />
+              </Field>
+              <Field label="VIN (optional)">
+                <input
+                  value={vin}
+                  onChange={(e) => setVin(e.target.value)}
+                  className="input-field font-mono uppercase"
+                  placeholder="1HGCV1F3XJA000000"
+                  maxLength={17}
+                />
+              </Field>
+              <Field label="Seller description" className="sm:col-span-2">
+                <textarea
+                  required
+                  rows={5}
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  className="input-field resize-y"
+                  placeholder="Paste the seller description from the listing…"
+                />
+              </Field>
+              <Field label="Source URL" className="sm:col-span-2">
+                <input
+                  type="url"
+                  value={sourceUrl}
+                  onChange={(e) => setSourceUrl(e.target.value)}
+                  className="input-field"
+                  placeholder="https://www.facebook.com/marketplace/item/…"
+                />
+              </Field>
+            </div>
+
+            {importedImageUrls.length ? (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs font-medium tracking-wide text-muted uppercase">
+                    Photos from Marketplace ({importedImageUrls.length})
+                  </p>
+                  <button
+                    type="button"
+                    className="text-xs font-semibold text-accent hover:text-accent-dim"
+                    onClick={() => setImportedImageUrls([])}
+                  >
+                    Clear imported
+                  </button>
+                </div>
+                <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                  {importedImageUrls.map((url) => (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      key={url}
+                      src={url}
+                      alt=""
+                      className="aspect-[4/3] w-full object-cover bg-mist"
+                      referrerPolicy="no-referrer"
+                    />
+                  ))}
+                </div>
+                <p className="text-xs text-muted">
+                  These will be downloaded by the API when you analyze. Upload your own copies below
+                  if the thumbnails fail to load.
+                </p>
+              </div>
+            ) : null}
+
+            <div
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragOver(true);
+              }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragOver(false);
+                addFiles(e.dataTransfer.files);
+              }}
+              className={`border border-dashed px-5 py-8 transition ${
+                dragOver
+                  ? "border-accent bg-accent-soft/40"
+                  : "border-[var(--line)] bg-paper/70 hover:border-accent/50"
+              }`}
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  addFiles(e.target.files);
+                  e.target.value = "";
+                }}
+              />
+              <p className="text-sm font-semibold text-ink">Drop listing photos here</p>
+              <p className="mt-1 text-sm text-muted">or choose files from your device (up to 12)</p>
+              <button
+                type="button"
+                className="btn-secondary mt-4 !py-2 text-sm"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                Choose photos
+              </button>
+              {files.length ? (
+                <div className="mt-5 grid grid-cols-3 gap-2 sm:grid-cols-4">
+                  {previewUrls.map((item, index) => (
+                    <div key={item.url} className="relative">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={item.url}
+                        alt={item.name}
+                        className="aspect-[4/3] w-full object-cover bg-mist"
+                      />
+                      <button
+                        type="button"
+                        aria-label={`Remove ${item.name}`}
+                        className="absolute right-1 top-1 bg-ink/80 px-1.5 py-0.5 text-[10px] font-semibold text-white"
+                        onClick={() => setFiles((prev) => prev.filter((_, i) => i !== index))}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+
+            {error ? <p className="text-sm text-danger">{error}</p> : null}
+            <button type="submit" disabled={submitting || isDemo} className="btn-primary w-full">
+              {submitting ? "Starting analysis…" : "Analyze listing"}
+            </button>
+            <p className="text-center font-mono text-[10px] tracking-wide text-muted uppercase">
+              Proxy {apiBaseUrl}
+            </p>
+          </form>
+        )}
+      </div>
+
+      <section className="border border-[var(--line)] bg-panel/90 p-6 md:sticky md:top-6 md:self-start md:p-7">
         {!listing ? (
-          <div className="flex h-full min-h-72 flex-col justify-center gap-3">
-            <p className="font-display text-2xl text-ink">Report appears here</p>
+          <div className="flex min-h-80 flex-col justify-center gap-3">
+            <p className="font-mono text-xs tracking-[0.18em] text-accent uppercase">Report</p>
+            <p className="font-display text-3xl text-ink">Waiting for a listing</p>
             <p className="max-w-sm text-sm leading-relaxed text-muted">
-              After upload, analysis runs asynchronously. This panel updates until the job
-              completes.
+              Import a Marketplace link or enter details, then analyze. This panel updates while the
+              job runs.
             </p>
           </div>
         ) : (
@@ -306,7 +536,7 @@ export function Checker() {
                 {listing.report.claimChecks.length ? (
                   <ul className="space-y-2">
                     {listing.report.claimChecks.map((check) => (
-                      <li key={check.claim} className="border border-panel-border px-3 py-2.5 text-sm">
+                      <li key={check.claim} className="border border-[var(--line)] px-3 py-2.5 text-sm">
                         <span className="font-mono text-xs uppercase text-accent">{check.verdict}</span>
                         <p className="text-ink">{check.claim}</p>
                         <p className="text-muted">{check.detail}</p>
@@ -317,7 +547,7 @@ export function Checker() {
                 {listing.report.flags.length ? (
                   <ul className="space-y-2">
                     {listing.report.flags.map((flag) => (
-                      <li key={flag.code} className="border border-panel-border px-3 py-2.5 text-sm">
+                      <li key={flag.code} className="border border-[var(--line)] px-3 py-2.5 text-sm">
                         <span className="font-mono text-xs uppercase text-warn">{flag.severity}</span>
                         <p className="text-ink">{flag.message}</p>
                       </li>
@@ -338,9 +568,17 @@ export function Checker() {
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({
+  label,
+  children,
+  className = "",
+}: {
+  label: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
   return (
-    <label className="block space-y-1.5">
+    <label className={`block space-y-1.5 ${className}`}>
       <span className="text-xs font-medium tracking-wide text-muted uppercase">{label}</span>
       {children}
     </label>
@@ -349,7 +587,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 function MetaChip({ children }: { children: React.ReactNode }) {
   return (
-    <span className="border border-panel-border bg-paper px-2.5 py-1 font-mono text-[11px] text-muted">
+    <span className="border border-[var(--line)] bg-paper px-2.5 py-1 font-mono text-[11px] text-muted">
       {children}
     </span>
   );

@@ -12,13 +12,21 @@ from listing_validator_api.config import get_settings
 from listing_validator_api.db import get_session
 from listing_validator_api.jobs import enqueue_redis, run_analysis_job
 from listing_validator_api.models import Listing, ListingImage
+from listing_validator_api.marketplace import (
+    MarketplaceImportError,
+    download_allowed_images,
+    fetch_marketplace_listing,
+)
 from listing_validator_api.rate_limit import enforce_rate_limit
 from listing_validator_api.schemas import (
     AnalysisReport,
+    ImageUrlsIn,
     ListingCreate,
     ListingImageOut,
     ListingOut,
     ListingSummaryOut,
+    MarketplaceImportOut,
+    MarketplaceImportRequest,
     MeOut,
 )
 from listing_validator_api.storage import get_storage
@@ -93,6 +101,29 @@ async def _owned_listing(
         # Hide both other users' listings and legacy anonymous rows from signed-in users.
         raise HTTPException(status_code=404, detail="Listing not found")
     return listing
+
+
+@router.post("/import/marketplace", response_model=MarketplaceImportOut)
+async def import_marketplace(
+    request: Request,
+    payload: MarketplaceImportRequest,
+    user: RequireUser,
+) -> MarketplaceImportOut:
+    enforce_rate_limit(request, user.id if user else None)
+    try:
+        draft = await fetch_marketplace_listing(payload.url)
+    except MarketplaceImportError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    return MarketplaceImportOut(
+        source_url=draft.source_url,
+        title=draft.title,
+        description=draft.description,
+        price=draft.price,
+        vin=draft.vin,
+        image_urls=draft.image_urls,
+        warnings=draft.warnings,
+        partial=draft.partial,
+    )
 
 
 @router.get("/me", response_model=MeOut)
@@ -172,6 +203,31 @@ async def create_listing(
     return _to_out(listing)
 
 
+async def _attach_image_bytes(
+    listing: Listing,
+    blobs: list[tuple[str, bytes, str]],
+) -> int:
+    storage = get_storage()
+    start = len(listing.images)
+    stored = 0
+    for filename, data, content_type in blobs:
+        if not data:
+            continue
+        if len(data) > _MAX_IMAGE_BYTES:
+            raise HTTPException(status_code=413, detail="Each photo must be under 15 MB")
+        path = await storage.upload(listing.id, filename, data, content_type)
+        listing.images.append(
+            ListingImage(
+                listing_id=listing.id,
+                path=path,
+                content_type=content_type,
+                sort_order=start + stored,
+            )
+        )
+        stored += 1
+    return stored
+
+
 @router.post("/listings/{listing_id}/images", response_model=ListingOut)
 async def upload_images(
     listing_id: str,
@@ -186,28 +242,44 @@ async def upload_images(
     if not files:
         raise HTTPException(status_code=400, detail="At least one image is required")
 
-    storage = get_storage()
-    start = len(listing.images)
-    stored = 0
+    blobs: list[tuple[str, bytes, str]] = []
     for upload in files:
         data = await upload.read()
-        if not data:
-            continue
-        if len(data) > _MAX_IMAGE_BYTES:
-            raise HTTPException(status_code=413, detail="Each photo must be under 15 MB")
         content_type = upload.content_type or "application/octet-stream"
-        path = await storage.upload(listing.id, upload.filename or "photo.jpg", data, content_type)
-        listing.images.append(
-            ListingImage(
-                listing_id=listing.id,
-                path=path,
-                content_type=content_type,
-                sort_order=start + stored,
-            )
-        )
-        stored += 1
+        blobs.append((upload.filename or "photo.jpg", data, content_type))
+
+    stored = await _attach_image_bytes(listing, blobs)
     if stored == 0:
         raise HTTPException(status_code=400, detail="At least one non-empty image is required")
+
+    listing.status = "pending"
+    listing.error = None
+    await session.commit()
+    listing = await _owned_listing(session, listing_id, user)
+    _schedule(background, listing.id)
+    return _to_out(listing)
+
+
+@router.post("/listings/{listing_id}/images/from-urls", response_model=ListingOut)
+async def upload_images_from_urls(
+    listing_id: str,
+    request: Request,
+    payload: ImageUrlsIn,
+    background: BackgroundTasks,
+    user: RequireUser,
+    session: AsyncSession = Depends(get_session),
+) -> ListingOut:
+    enforce_rate_limit(request, user.id if user else None)
+    listing = await _owned_listing(session, listing_id, user)
+    blobs = await download_allowed_images(payload.urls)
+    if not blobs:
+        raise HTTPException(
+            status_code=400,
+            detail="Could not download any listing photos from Facebook. Upload photos manually.",
+        )
+    stored = await _attach_image_bytes(listing, blobs)
+    if stored == 0:
+        raise HTTPException(status_code=400, detail="Could not store downloaded photos")
 
     listing.status = "pending"
     listing.error = None

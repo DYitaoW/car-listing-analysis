@@ -89,3 +89,18 @@ export interface CreateListingRequest {
   vin?: string | null;
   sourceUrl?: string | null;
 }
+
+export interface MarketplaceImportRequest {
+  url: string;
+}
+
+export interface MarketplaceImportResult {
+  sourceUrl: string;
+  title: string;
+  description: string;
+  price: number | null;
+  vin: string | null;
+  imageUrls: string[];
+  warnings: string[];
+  partial: boolean;
+}

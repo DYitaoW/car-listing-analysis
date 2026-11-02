@@ -3,9 +3,18 @@ import type {
   CreateListingRequest,
   Listing,
   ListingSummary,
+  MarketplaceImportRequest,
+  MarketplaceImportResult,
 } from "@listing-validator/types";
 
-export type { AuthUser, CreateListingRequest, Listing, ListingSummary };
+export type {
+  AuthUser,
+  CreateListingRequest,
+  Listing,
+  ListingSummary,
+  MarketplaceImportRequest,
+  MarketplaceImportResult,
+};
 
 export interface HealthResponse {
   status: string;
@@ -99,6 +108,12 @@ export function createApiClient(
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       }),
+    importMarketplace: (body: MarketplaceImportRequest) =>
+      request<MarketplaceImportResult>("/import/marketplace", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }),
     uploadImages: async (listingId: string, files: File[] | Blob[]) => {
       const form = new FormData();
       for (const file of files) {
@@ -109,6 +124,12 @@ export function createApiClient(
         body: form,
       });
     },
+    uploadImagesFromUrls: (listingId: string, urls: string[]) =>
+      request<Listing>(`/listings/${listingId}/images/from-urls`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ urls }),
+      }),
     uploadForm: (listingId: string, form: FormData) =>
       request<Listing>(`/listings/${listingId}/images`, {
         method: "POST",
